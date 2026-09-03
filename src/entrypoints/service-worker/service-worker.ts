@@ -6,14 +6,19 @@ import {
 	loadRegionsForSite,
 	loadSitelist,
 	loadSnoozeUntil,
+	loadUsageMetrics,
+	loadUsageRuntimeState,
 	migrationPromise,
 	recordDailyBlock,
 	saveSiteEnabled,
 	saveSnoozeUntil,
 	saveThemeForSite,
+	saveUsageMetrics,
+	saveUsageRuntimeState,
 } from '/storage/storage';
 import { originsForSite } from '/lib/util';
 import type { Theme } from '/storage/schema';
+import { pruneUsageMetrics, recordUsageActivity } from '/usage/usage-metrics';
 import themeDark from '/themes/dark.css?raw';
 import themeLight from '/themes/light.css?raw';
 
@@ -151,6 +156,37 @@ const countBlock = () => {
 	return counterQueue;
 };
 
+let usageQueue = Promise.resolve();
+const trackUsage = (active: boolean, sender: MessageSender) => {
+	usageQueue = usageQueue.catch(() => undefined).then(async () => {
+		const now = Date.now();
+		const [usage, runtime] = await Promise.all([
+			loadUsageMetrics(),
+			loadUsageRuntimeState(),
+		]);
+
+		let siteId: SiteId | undefined;
+		if (active && sender.tab.incognito !== true) {
+			try {
+				const [siteList, enabledSiteIds] = await Promise.all([loadSitelist(), loadEnabledSites()]);
+				const url = new URL(sender.url);
+				const enabled = new Set(enabledSiteIds);
+				siteId = siteList.sites.find(site => enabled.has(site.id) && site.hosts.includes(url.host))?.id;
+			} catch {
+				// Treat malformed or unavailable sender URLs as inactive rather than persisting them.
+			}
+		}
+
+		recordUsageActivity(usage, runtime, sender.tab.id, siteId, active && siteId != null, now);
+		pruneUsageMetrics(usage, now);
+		await Promise.all([
+			saveUsageMetrics(usage),
+			saveUsageRuntimeState(runtime),
+		]);
+	});
+	return usageQueue;
+};
+
 const handleMessage = async (msg: ToServiceWorkerMessage, sender: MessageSender) => {
 	if (msg.type === 'requestSiteDetails') {
 		const [siteList, snoozeUntil, enabledSiteIds] = await Promise.all([
@@ -233,6 +269,10 @@ const handleMessage = async (msg: ToServiceWorkerMessage, sender: MessageSender)
 
 	if (msg.type === 'recordBlock') {
 		return countBlock();
+	}
+
+	if (msg.type === 'trackUsageActivity') {
+		return trackUsage(msg.active, sender);
 	}
 
 	if (msg.type === 'notifyOptionsUpdated') {

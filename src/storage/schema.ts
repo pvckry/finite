@@ -9,6 +9,34 @@ export type DailyBlockerCounter = {
 	count: number;
 };
 
+export type SiteUsageMetrics = {
+	visits: number;
+	sessions: number;
+	activeMs: number;
+};
+
+export type DailyUsageMetrics = {
+	date: string;
+	sites: Partial<Record<SiteId, SiteUsageMetrics>>;
+};
+
+export type UsageMetrics = {
+	version: 1;
+	days: Record<string, DailyUsageMetrics>;
+};
+
+export type ActiveUsageState = {
+	tabId: number;
+	siteId: SiteId;
+	startedAt: number;
+	countedDate: string;
+};
+
+export type UsageRuntimeState = {
+	active?: ActiveUsageState;
+	lastActivityBySite: Partial<Record<SiteId, number>>;
+};
+
 export type StorageLocalV2 = {
 	version: 2;
 	snoozeMode?: SnoozeMode;
@@ -17,6 +45,7 @@ export type StorageLocalV2 = {
 	siteConfig?: Record<SiteId, SiteConfig>;
 	snoozeUntil?: number;
 	dailyBlockerCounter?: DailyBlockerCounter;
+	usageMetrics?: UsageMetrics;
 };
 
 export type SiteConfig = {

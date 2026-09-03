@@ -527,6 +527,105 @@ nfe-tabs [role="tab"][aria-selected="false"] { z-index: 0; }
 	padding: 20px 16px 0;
 }
 
+.activity-panel {
+	display: grid;
+	gap: 20px;
+	padding: 20px;
+}
+
+.activity-summary {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 12px;
+}
+
+.activity-stat {
+	display: grid;
+	gap: 5px;
+	padding: 15px 16px;
+	border: 1px solid var(--theme-border);
+	border-radius: 13px;
+	background: var(--theme-lighten-100);
+}
+
+.activity-stat span {
+	color: var(--theme-text-secondary);
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+
+.activity-stat strong {
+	font-size: 24px;
+	font-weight: 760;
+	letter-spacing: -0.025em;
+}
+
+.activity-explainer {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 5px 20px;
+	color: var(--theme-text-secondary);
+	font-size: 13px;
+}
+
+.activity-explainer p,
+.activity-privacy {
+	font-size: inherit;
+}
+
+.activity-table-wrap {
+	overflow-x: auto;
+	border: 1px solid var(--theme-border);
+	border-radius: 13px;
+}
+
+.activity-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 14px;
+}
+
+.activity-table th,
+.activity-table td {
+	padding: 11px 14px;
+	border-bottom: 1px solid var(--theme-border);
+	text-align: left;
+	white-space: nowrap;
+}
+
+.activity-table th {
+	color: var(--theme-text-secondary);
+	background: var(--theme-lighten-100);
+	font-size: 11px;
+	font-weight: 800;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.activity-table tbody tr:last-child td {
+	border-bottom: 0;
+}
+
+.activity-table .activity-number {
+	text-align: right;
+}
+
+.activity-empty {
+	padding: 28px;
+	border: 1px dashed var(--theme-border);
+	border-radius: 13px;
+	color: var(--theme-text-secondary);
+	text-align: center;
+	font-size: 14px;
+}
+
+.activity-privacy {
+	color: var(--theme-text-subtle);
+	font-size: 12px;
+}
+
 .site-browser {
 	min-height: 420px;
 }
@@ -612,4 +711,6 @@ nfe-tabs [role="tab"][aria-selected="false"] { z-index: 0; }
 	.site-browser { flex-direction: column; }
 	.site-list { width: 100%; max-width: none; min-width: 0; border-right: 0; border-bottom: 1px solid var(--theme-border); }
 	.site-detail { min-height: 320px; }
+	.activity-panel { padding: 14px; }
+	.activity-summary { grid-template-columns: 1fr; }
 }

@@ -42,7 +42,7 @@ type OptionsUpdated = {
 	type: 'nfe#optionsUpdated',
 }
 
-export type ToServiceWorkerMessage = RequestSiteDetails | OpenOptionsPage | CloseCurrentTab | RecordBlock | NotifyOptionsUpdated | SetSiteTheme | EnableSite | DisableSite | Snooze | ReadSnooze;
+export type ToServiceWorkerMessage = RequestSiteDetails | OpenOptionsPage | CloseCurrentTab | RecordBlock | TrackUsageActivity | NotifyOptionsUpdated | SetSiteTheme | EnableSite | DisableSite | Snooze | ReadSnooze;
 
 // Request site details from service worker.
 type RequestSiteDetails = {
@@ -61,6 +61,11 @@ type CloseCurrentTab = {
 
 type RecordBlock = {
 	type: 'recordBlock',
+};
+
+type TrackUsageActivity = {
+	type: 'trackUsageActivity',
+	active: boolean,
 };
 
 type NotifyOptionsUpdated = {

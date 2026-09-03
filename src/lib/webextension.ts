@@ -38,6 +38,7 @@ type WebExtensionAPI = {
 	storage: {
 		local: Storage,
 		sync: Storage,
+		session: Storage,
 	};
 };
 
@@ -102,6 +103,7 @@ export type Permissions = {
 type Tab = {
 	id: TabId;
 	url: string;
+	incognito?: boolean;
 };
 
 export type MessageSender = {

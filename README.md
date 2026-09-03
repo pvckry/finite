@@ -22,7 +22,9 @@ Twitter/X includes independent controls for the For you and Following timelines,
 
 ## Privacy
 
-Finite does not include analytics or telemetry and does not send browsing activity to a server. Preferences, snooze state, and the current daily blocker count are stored locally by Chrome.
+Finite does not include third-party analytics or telemetry and does not send browsing activity to a server. Preferences, snooze state, the current daily blocker count, and 90 days of daily per-site usage totals are stored locally by Chrome.
+
+Usage totals contain only the date, Finite site ID, foreground visit and session counts, and active milliseconds. A visit is a foreground entry, a session starts after 30 minutes away, and time is counted only while the page is visible and focused. Incognito browsing, URLs, and page content are not recorded.
 
 ## Build and install
 

@@ -7,6 +7,7 @@ import { Snooze } from "./snooze";
 import { SitesTabContent } from "./tabs/sites";
 import { SnoozeTabContent } from "./tabs/snooze";
 import { versionText } from "/lib/util";
+import { ActivityMetrics } from "./activity-metrics";
 
 const SettingsSection: ParentComponent<{ kicker: string, title: string, description: string }> = ({ kicker, title, description, children }) => (
 	<section class="settings-section">
@@ -45,6 +46,10 @@ const OptionsPage = () => {
 				<div class="settings-sections">
 					<SettingsSection kicker="Blockers" title="Sites" description="Enable a site, then fine-tune exactly which regions disappear.">
 						<SitesTabContent />
+					</SettingsSection>
+
+					<SettingsSection kicker="Activity" title="Your browsing" description="Daily foreground visits, sessions, and active time across enabled sites.">
+						<ActivityMetrics />
 					</SettingsSection>
 
 					<SettingsSection kicker="Take a break" title="Snooze" description="Temporarily restore blocked regions without changing your setup.">

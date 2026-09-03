@@ -5,12 +5,14 @@ import type { DesiredRegionState, FromServiceWorkerMessage, ToServiceWorkerMessa
 import { BlockerPanel } from '../../shared/blocker-panel';
 import type { Theme } from '../../storage/schema';
 import type { Region, RegionId, SiteId } from '../../types/sitelist';
+import { USAGE_HEARTBEAT_MS } from '../../usage/usage-metrics';
 import nfeStyles from './nfe-container.css?raw';
 import sharedStyles from '../../shared/styles.css?raw';
 
 const browser = getBrowser();
 const token = Math.floor(Math.random() * 1000000);
 let extensionContextValid = true;
+let usageHeartbeatTimer: ReturnType<typeof setInterval> | undefined;
 
 const domReady = new Promise<Document>(resolve => {
 	const timer = setInterval(() => {
@@ -69,6 +71,7 @@ const invalidateContentScript = () => {
 	extensionContextValid = false;
 	state.injectedPageStyleElement?.remove();
 	if (state.snoozeTimer != null) clearTimeout(state.snoozeTimer);
+	if (usageHeartbeatTimer != null) clearInterval(usageHeartbeatTimer);
 
 	for (const region of state.regions.values()) {
 		for (const element of region.dynamicElements) element.removeAttribute(dynamicAttribute(region.config));
@@ -104,6 +107,20 @@ const sendMessage = async <Response = any>(message: ToServiceWorkerMessage): Pro
 		}
 		throw error;
 	}
+};
+
+const isUsageActive = () => document.visibilityState === 'visible' && document.hasFocus();
+const reportUsageActivity = () => sendMessage({ type: 'trackUsageActivity', active: isUsageActive() });
+
+const setupUsageTracking = () => {
+	window.addEventListener('focus', reportUsageActivity);
+	window.addEventListener('blur', reportUsageActivity);
+	document.addEventListener('visibilitychange', reportUsageActivity);
+	window.addEventListener('pagehide', () => sendMessage({ type: 'trackUsageActivity', active: false }));
+	usageHeartbeatTimer = setInterval(() => {
+		if (isUsageActive()) reportUsageActivity();
+	}, USAGE_HEARTBEAT_MS);
+	reportUsageActivity();
 };
 
 const countedBlockKeys = new Set<string>();
@@ -541,6 +558,7 @@ const scheduleDomRefresh = () => {
 };
 
 domReady.then(() => {
+	setupUsageTracking();
 	const observer = new MutationObserver(scheduleDomRefresh);
 	observer.observe(document.documentElement, { childList: true, subtree: true });
 	scheduleDomRefresh();

@@ -1,6 +1,6 @@
 import { getBrowser } from "../lib/webextension";
 import type { RegionId, SiteId, SiteList } from "../types/sitelist";
-import { type StorageSyncV1, SiteStateTagV1, type StorageLocal, type StorageLocalV2, CURRENT_STORAGE_SCHEMA_VERSION, type SiteConfig, type Theme, type SnoozeMode } from "./schema";
+import { type StorageSyncV1, SiteStateTagV1, type StorageLocal, type StorageLocalV2, CURRENT_STORAGE_SCHEMA_VERSION, type SiteConfig, type Theme, type SnoozeMode, type UsageMetrics, type UsageRuntimeState } from "./schema";
 
 const ensureMigrated = async (): Promise<void> => {
 	const browser = getBrowser();
@@ -78,7 +78,7 @@ export const saveSnoozeUntil = (snoozeUntil: number | undefined) => setKey('snoo
 export const loadSnoozeMode = () => getKey('snoozeMode', 'hold');
 export const saveSnoozeMode = (snoozeMode: SnoozeMode) => setKey('snoozeMode', snoozeMode);
 
-const localDateKey = (date = new Date()) => {
+export const localDateKey = (date = new Date()) => {
 	const year = date.getFullYear();
 	const month = String(date.getMonth() + 1).padStart(2, '0');
 	const day = String(date.getDate()).padStart(2, '0');
@@ -105,6 +105,20 @@ export const recordDailyBlock = async () => {
 export const loadSiteConfig = async (siteId: SiteId): Promise<SiteConfig | undefined> => {
 	const sites = await getKey('siteConfig', {});
 	return sites[siteId];
+};
+
+export const loadUsageMetrics = () => getKey('usageMetrics', { version: 1, days: {} } as UsageMetrics);
+export const saveUsageMetrics = (usageMetrics: UsageMetrics) => setKey('usageMetrics', usageMetrics);
+
+export const loadUsageRuntimeState = async (): Promise<UsageRuntimeState> => {
+	const browser = getBrowser();
+	const result = await browser.storage.session.get('usageRuntimeState');
+	return result?.usageRuntimeState ?? { lastActivityBySite: {} };
+};
+
+export const saveUsageRuntimeState = async (usageRuntimeState: UsageRuntimeState): Promise<void> => {
+	const browser = getBrowser();
+	await browser.storage.session.set({ usageRuntimeState });
 };
 
 export const loadThemeForSite = async (siteId: SiteId): Promise<Theme | undefined> => loadSiteConfig(siteId).then(site => site?.theme);
