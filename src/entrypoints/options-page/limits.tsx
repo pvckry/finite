@@ -52,6 +52,6 @@ export const UsageLimitsPanel = () => {
 			<strong>Messages</strong>
 			<span>Always unlimited, while still counted separately.</span>
 		</div>
-		<p class="panel-note">Limits use Europe/London days and consolidated totals when browser sync is paired.</p>
+		<p class="panel-note">Limits follow this browser's local day and use consolidated totals when browser sync is paired.</p>
 	</div>;
 };

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { siteId } from '/types/sitelist';
-import { classifySurface } from './categories';
+import { classifySurface, classifySurfaceDetails } from './categories';
 
 describe('surface categories', () => {
 	test('keeps Instagram messages and followed posts outside algorithmic time', () => {
@@ -21,5 +21,12 @@ describe('surface categories', () => {
 		expect(classifySurface(siteId('twitter'), '/home', { twitterTimeline: 'for-you' })).toBe('algorithmic');
 		expect(classifySurface(siteId('twitter'), '/home', { twitterTimeline: 'following' })).toBe('intentional');
 		expect(classifySurface(siteId('twitter'), '/messages/1')).toBe('messages');
+	});
+
+	test('returns stable privacy-preserving surface identifiers', () => {
+		expect(classifySurfaceDetails(siteId('youtube'), '/shorts/abc').surfaceId).toBe('shorts');
+		expect(classifySurfaceDetails(siteId('twitter'), '/home', { twitterTimeline: 'for-you' }).surfaceId).toBe('for_you');
+		expect(classifySurfaceDetails(siteId('reddit'), '/r/typescript').surfaceId).toBe('community');
+		expect(classifySurfaceDetails(siteId('instagram'), '/direct/inbox').surfaceId).toBe('messages');
 	});
 });

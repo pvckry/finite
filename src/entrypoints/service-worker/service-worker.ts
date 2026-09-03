@@ -20,8 +20,10 @@ import {
 	saveUsageRuntimeState,
 } from '/storage/storage';
 import { originsForSite } from '/lib/util';
-import type { CategorySnooze, FiniteSyncState, SnoozeState, Theme, UsageCategory, UsageMetrics, UsageRuntimeState } from '/storage/schema';
+import type { CategorySnooze, FiniteSyncState, InterventionKind, PendingTimelineEvent, SnoozeState, Theme, TimelineActivityReason, UsageCategory, UsageMetrics, UsageRuntimeState, UsageSurfaceId } from '/storage/schema';
 import { activeSessionMs, dateKeyForTimestamp, incrementLimitReached, localCategoryTotal, pruneUsageMetrics, recordUsageActivity } from '/usage/usage-metrics';
+import { createInterventionEvent, transitionTimeline } from '/usage/timeline';
+import { upsertPendingTimelineEvents } from '/usage/timeline-store';
 import { disconnectFinite, pairFinite, syncFinite } from '/sync/finite-sync';
 import themeDark from '/themes/dark.css?raw';
 import themeLight from '/themes/light.css?raw';
@@ -263,7 +265,13 @@ const setSiteTheme = async (siteId: SiteId, theme: Theme | null) => {
 };
 
 let usageQueue: Promise<UsageStatus | undefined> = Promise.resolve(undefined);
-const trackUsage = (active: boolean, category: UsageCategory, sender: MessageSender) => {
+const trackUsage = (
+	active: boolean,
+	category: UsageCategory,
+	surfaceId: UsageSurfaceId,
+	reason: TimelineActivityReason,
+	sender: MessageSender,
+) => {
 	usageQueue = usageQueue.catch(() => undefined).then(async () => {
 		const now = Date.now();
 		const [usage, runtime, snoozes] = await Promise.all([
@@ -288,6 +296,13 @@ const trackUsage = (active: boolean, category: UsageCategory, sender: MessageSen
 		const previousActive = runtime.active == null ? undefined : { ...runtime.active };
 		const currentSnooze = category === 'messages' ? undefined : snoozes.active[category];
 		const isSnoozing = currentSnooze != null && currentSnooze.requestedEndAt > now;
+		const timeline = transitionTimeline(
+			runtime.timelineActive,
+			active && siteId != null ? { siteId, category, surfaceId, snoozed: isSnoozing } : undefined,
+			now,
+			reason,
+		);
+		runtime.timelineActive = timeline.active;
 		const duration = recordUsageActivity(
 			usage,
 			runtime,
@@ -306,12 +321,21 @@ const trackUsage = (active: boolean, category: UsageCategory, sender: MessageSen
 		pruneUsageMetrics(usage, now);
 
 		let status = await usageStatusFor(category, usage, runtime, snoozes);
+		const timelineEvents: PendingTimelineEvent[] = [...timeline.upserts];
 		if (siteId != null && status.limitReached) {
 			if (incrementLimitReached(usage, runtime, dateKeyForTimestamp(now), siteId, category)) {
+				if (category !== 'messages') {
+					timelineEvents.push(createInterventionEvent(
+						{ siteId, category, surfaceId },
+						'limit_reached',
+						now,
+					));
+				}
 				status = await usageStatusFor(category, usage, runtime, snoozes);
 			}
 		}
 		await Promise.all([
+			upsertPendingTimelineEvents(timelineEvents),
 			saveUsageMetrics(usage),
 			saveUsageRuntimeState(runtime),
 			saveCategorySnoozes(snoozes),
@@ -320,6 +344,28 @@ const trackUsage = (active: boolean, category: UsageCategory, sender: MessageSen
 		return status;
 	});
 	return usageQueue;
+};
+
+const recordIntervention = async (
+	kind: InterventionKind,
+	category: Exclude<UsageCategory, 'messages'>,
+	surfaceId: UsageSurfaceId,
+	sender: MessageSender,
+) => {
+	const [siteList, enabledSiteIds] = await Promise.all([loadSitelist(), loadEnabledSites()]);
+	let siteId: SiteId | undefined;
+	try {
+		const url = new URL(sender.url);
+		const enabled = new Set(enabledSiteIds);
+		siteId = siteList.sites.find(site => enabled.has(site.id) && site.hosts.includes(url.host))?.id;
+	} catch {
+		return;
+	}
+	if (siteId == null || sender.tab.incognito === true) return;
+	await upsertPendingTimelineEvents([
+		createInterventionEvent({ siteId, category, surfaceId }, kind),
+	]);
+	runFiniteSync().catch(() => undefined);
 };
 
 const handleMessage = async (msg: ToServiceWorkerMessage, sender: MessageSender) => {
@@ -410,7 +456,11 @@ const handleMessage = async (msg: ToServiceWorkerMessage, sender: MessageSender)
 	}
 
 	if (msg.type === 'trackUsageActivity') {
-		return trackUsage(msg.active, msg.category, sender);
+		return trackUsage(msg.active, msg.category, msg.surfaceId, msg.reason, sender);
+	}
+
+	if (msg.type === 'recordIntervention') {
+		return recordIntervention(msg.interventionKind, msg.category, msg.surfaceId, sender);
 	}
 
 	if (msg.type === 'notifyOptionsUpdated') {
@@ -440,6 +490,15 @@ const handleMessage = async (msg: ToServiceWorkerMessage, sender: MessageSender)
 			};
 		}
 		await saveCategorySnoozes(snoozes);
+		if (msg.until > now && msg.triggerContext === 'blocker' && msg.sourceSiteId != null) {
+			await upsertPendingTimelineEvents([
+				createInterventionEvent({
+					siteId: msg.sourceSiteId,
+					category: msg.category,
+					surfaceId: msg.usageSurfaceId ?? msg.sourceSurfaceId ?? 'other',
+				}, 'snooze_started', now),
+			]);
+		}
 		runFiniteSync(true).catch(() => undefined);
 		await notifyTabsOptionsUpdated();
 		return usageStatusFor(msg.category, undefined, undefined, snoozes);

@@ -22,9 +22,9 @@ Twitter/X includes independent controls for the For you and Following timelines,
 
 ## Privacy
 
-Finite does not include third-party analytics or telemetry. Preferences, snooze state, and 90 days of daily per-site usage totals are stored locally by Chrome. When the optional private browser sync is paired, aggregate site/category totals, limits, settings, and snooze outcomes are also sent to the account owner's vckry server.
+Finite does not include third-party analytics or telemetry. Preferences, snooze state, and 90 days of daily per-site usage totals are stored locally by Chrome. When optional private browser sync is paired, privacy-safe activity spans and intervention events are queued locally until acknowledged, then retained on the account owner's vckry server alongside aggregate totals, limits, settings, and snooze outcomes.
 
-Usage totals contain only the date, Finite site ID, foreground visit and session counts, and active milliseconds. A visit is a foreground entry, a session starts after 30 minutes away, and time is counted only while the page is visible and focused. Incognito browsing, URLs, and page content are not recorded.
+Raw events contain only timestamps, the Finite site/category and stable surface identifier, snooze state, event reason, browser installation, version, and local time-zone context. They never contain exact URLs, page titles, searches, account names, posts, messages, or page content. A visit is a foreground entry, a session starts after 30 minutes away, and time is counted only while the page is visible and focused. Incognito browsing is not recorded.
 
 ## Build and install
 

@@ -6,6 +6,78 @@ export type SnoozeMode = 'instant' | 'hold';
 
 export type UsageCategory = 'algorithmic' | 'intentional' | 'messages';
 
+export type UsageSurfaceId = string;
+
+export type ActivityStartReason =
+	| 'page_load'
+	| 'focus'
+	| 'navigation'
+	| 'surface_change'
+	| 'snooze_change'
+	| 'resume';
+
+export type ActivityEndReason =
+	| 'blur'
+	| 'hidden'
+	| 'pagehide'
+	| 'navigation'
+	| 'surface_change'
+	| 'snooze_change'
+	| 'stale'
+	| 'browser_closed';
+
+export type TimelineActivityReason =
+	| 'page_load'
+	| 'focus'
+	| 'visible'
+	| 'heartbeat'
+	| 'navigation'
+	| 'surface_change'
+	| 'blur'
+	| 'hidden'
+	| 'pagehide';
+
+export type ActivitySpanEvent = {
+	id: string;
+	kind: 'activity_span';
+	eventVersion: 1;
+	siteId: SiteId;
+	category: UsageCategory;
+	surfaceId: UsageSurfaceId;
+	snoozed: boolean;
+	startedAt: number;
+	observedThrough: number;
+	endedAt?: number;
+	startReason: ActivityStartReason;
+	endReason?: ActivityEndReason;
+	timeZone: string;
+	utcOffsetMinutes: number;
+	updatedAt: number;
+};
+
+export type InterventionKind =
+	| 'blocker_shown'
+	| 'limit_reached'
+	| 'close_tab'
+	| 'settings_opened'
+	| 'snooze_started';
+
+export type InterventionEvent = {
+	id: string;
+	kind: 'intervention';
+	eventVersion: 1;
+	siteId: SiteId;
+	category: Exclude<UsageCategory, 'messages'>;
+	surfaceId: UsageSurfaceId;
+	interventionKind: InterventionKind;
+	occurredAt: number;
+	timeZone: string;
+	utcOffsetMinutes: number;
+	updatedAt: number;
+};
+
+export type PendingTimelineEvent = ActivitySpanEvent | InterventionEvent;
+
 export const USAGE_CATEGORIES: UsageCategory[] = ['algorithmic', 'intentional', 'messages'];
 
 export type CategoryUsageMetrics = {
@@ -47,6 +119,7 @@ export type CategorySessionRuntime = {
 
 export type UsageRuntimeState = {
 	active?: ActiveUsageState;
+	timelineActive?: ActivitySpanEvent;
 	lastActivityBySurface: Record<string, number>;
 	categorySessions: Partial<Record<UsageCategory, CategorySessionRuntime>>;
 	limitReachedKeys: string[];
@@ -82,7 +155,8 @@ export type SnoozeState = {
 
 export type SharedSettings = {
 	schemaVersion: 1;
-	dayTimezone: 'Europe/London';
+	/** Informational IANA zone from the browser that last changed shared settings. */
+	dayTimezone: string;
 	limits: UsageLimits;
 	snooze: { endAfterInactiveMs: number };
 	enabledSites: SiteId[];

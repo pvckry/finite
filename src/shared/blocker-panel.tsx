@@ -1,7 +1,7 @@
 import type { Accessor } from 'solid-js';
 import { sendToServiceWorker, type UsageStatus } from '/messaging/messages';
 import type { Theme } from '/storage/schema';
-import type { UsageCategory } from '/storage/schema';
+import type { UsageCategory, UsageSurfaceId } from '/storage/schema';
 import type { SiteId } from '/types/sitelist';
 
 export const BlockerPanel = ({
@@ -9,11 +9,13 @@ export const BlockerPanel = ({
 	theme,
 	usage,
 	category,
+	surfaceId,
 }: {
 	siteId: Accessor<SiteId | null>;
 	theme: Accessor<Theme | null>;
 	usage: Accessor<UsageStatus | null>;
 	category: Accessor<Exclude<UsageCategory, 'messages'>>;
+	surfaceId: Accessor<UsageSurfaceId>;
 }) => {
 	const toggleTheme = async () => {
 		const id = siteId();
@@ -35,7 +37,28 @@ export const BlockerPanel = ({
 			until: Date.now() + 5 * 60 * 1000,
 			triggerContext: 'blocker',
 			sourceSiteId: siteId() ?? undefined,
+			usageSurfaceId: surfaceId(),
 		});
+	};
+
+	const recordAndClose = async () => {
+		await sendToServiceWorker({
+			type: 'recordIntervention',
+			interventionKind: 'close_tab',
+			category: category(),
+			surfaceId: surfaceId(),
+		});
+		await sendToServiceWorker({ type: 'closeCurrentTab' });
+	};
+
+	const recordAndOpenSettings = async () => {
+		await sendToServiceWorker({
+			type: 'recordIntervention',
+			interventionKind: 'settings_opened',
+			category: category(),
+			surfaceId: surfaceId(),
+		});
+		await sendToServiceWorker({ type: 'openOptionsPage' });
 	};
 
 	return (
@@ -48,9 +71,9 @@ export const BlockerPanel = ({
 				</div>
 			</div>
 			<div class="blocker-actions">
-				<button class="primary blocker-primary" onClick={() => sendToServiceWorker({ type: 'closeCurrentTab' })}>Close tab</button>
+				<button class="primary blocker-primary" onClick={recordAndClose}>Close tab</button>
 				<button class="secondary" onClick={snooze}>Snooze 5m</button>
-				<button class="secondary" onClick={() => sendToServiceWorker({ type: 'openOptionsPage' })}>Settings</button>
+				<button class="secondary" onClick={recordAndOpenSettings}>Settings</button>
 				<button class="tertiary blocker-theme" aria-label="Toggle blocker panel theme" title="Toggle panel theme" onClick={toggleTheme}>
 					{theme() === 'dark' ? '☀️' : '🌙'}
 				</button>

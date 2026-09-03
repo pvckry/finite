@@ -156,6 +156,7 @@ export const loadUsageRuntimeState = async (): Promise<UsageRuntimeState> => {
 	const state = result?.usageRuntimeState as Partial<UsageRuntimeState> | undefined;
 	return {
 		active: state?.active,
+		timelineActive: state?.timelineActive,
 		lastActivityBySurface: state?.lastActivityBySurface ?? {},
 		categorySessions: state?.categorySessions ?? {},
 		limitReachedKeys: state?.limitReachedKeys ?? [],
@@ -241,7 +242,7 @@ export const loadSharedSettings = async (): Promise<SharedSettings> => {
 	]);
 	return {
 		schemaVersion: 1,
-		dayTimezone: 'Europe/London',
+		dayTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
 		limits,
 		snooze: { endAfterInactiveMs: snoozeInactivityMs },
 		enabledSites,

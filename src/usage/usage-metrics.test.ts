@@ -53,8 +53,8 @@ describe('daily usage metrics', () => {
 	test('splits active time at local midnight and starts the new daily totals', () => {
 		const usage = emptyUsageMetrics();
 		const runtime = emptyUsageRuntimeState();
-		const start = Date.parse('2026-09-03T22:59:50Z');
-		const end = Date.parse('2026-09-03T23:00:10Z');
+		const start = localTime(2026, 9, 3, 23, 59, 50);
+		const end = localTime(2026, 9, 4, 0, 0, 10);
 
 		addActiveDuration(usage, youtube, 'algorithmic', start, end, true);
 

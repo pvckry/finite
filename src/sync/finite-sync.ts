@@ -2,6 +2,7 @@ import packageJson from '../../package.json';
 import type {
 	ConsolidatedDailyTotal,
 	FiniteSyncState,
+	PendingTimelineEvent,
 	SharedSettings,
 	SnoozeState,
 	SyncInstallation,
@@ -16,6 +17,7 @@ import {
 	saveFiniteSyncState,
 } from '/storage/storage';
 import { flattenUsageMetrics } from '/usage/usage-metrics';
+import { loadPendingTimelineEvents, removeAcknowledgedTimelineEvents } from '/usage/timeline-store';
 import { FINITE_SUPABASE_ANON_KEY, FINITE_SYNC_ENDPOINT } from './config';
 
 type PairResponse = {
@@ -81,6 +83,38 @@ const serializeSnoozes = (state: SnoozeState) => [...state.history, ...Object.va
 		activeMs: snooze!.activeMs,
 	}));
 
+const serializeActivitySpans = (events: PendingTimelineEvent[]) => events
+	.filter(event => event.kind === 'activity_span')
+	.map(event => ({
+		id: event.id,
+		eventVersion: event.eventVersion,
+		siteId: event.siteId,
+		category: event.category,
+		surfaceId: event.surfaceId,
+		snoozed: event.snoozed,
+		startedAt: new Date(event.startedAt).toISOString(),
+		observedThrough: new Date(event.observedThrough).toISOString(),
+		endedAt: event.endedAt == null ? null : new Date(event.endedAt).toISOString(),
+		startReason: event.startReason,
+		endReason: event.endReason ?? null,
+		timeZone: event.timeZone,
+		utcOffsetMinutes: event.utcOffsetMinutes,
+	}));
+
+const serializeInterventions = (events: PendingTimelineEvent[]) => events
+	.filter(event => event.kind === 'intervention')
+	.map(event => ({
+		id: event.id,
+		eventVersion: event.eventVersion,
+		siteId: event.siteId,
+		category: event.category,
+		surfaceId: event.surfaceId,
+		interventionKind: event.interventionKind,
+		occurredAt: new Date(event.occurredAt).toISOString(),
+		timeZone: event.timeZone,
+		utcOffsetMinutes: event.utcOffsetMinutes,
+	}));
+
 export const pairFinite = async (pairingCode: string, deviceName: string): Promise<FiniteSyncState> => {
 	const [state, initialSettings] = await Promise.all([loadFiniteSyncState(), loadSharedSettings()]);
 	const attempted: FiniteSyncState = { ...state, deviceName: deviceName.trim(), lastAttemptAt: Date.now(), lastError: undefined };
@@ -116,6 +150,7 @@ const postSync = async (
 	state: FiniteSyncState,
 	usage: UsageMetrics,
 	snoozes: SnoozeState,
+	timelineEvents: PendingTimelineEvent[],
 	settings: SharedSettings | null,
 	baseRevision: number | null,
 ) => request<SyncResponse>({
@@ -124,6 +159,8 @@ const postSync = async (
 	extensionVersion: packageJson.version,
 	activity: flattenUsageMetrics(usage),
 	snoozes: serializeSnoozes(snoozes),
+	activitySpans: serializeActivitySpans(timelineEvents),
+	interventions: serializeInterventions(timelineEvents),
 	settings,
 	settingsBaseRevision: baseRevision,
 }, state.installationToken);
@@ -132,10 +169,11 @@ export const syncFinite = async (): Promise<FiniteSyncState> => {
 	const state = await loadFiniteSyncState();
 	if (state.installationToken == null) return state;
 
-	const [usage, snoozes, localSettings] = await Promise.all([
+	const [usage, snoozes, localSettings, timelineEvents] = await Promise.all([
 		loadUsageMetrics(),
 		loadCategorySnoozes(),
 		loadSharedSettings(),
+		loadPendingTimelineEvents(),
 	]);
 	const attempted: FiniteSyncState = { ...state, lastAttemptAt: Date.now(), lastError: undefined };
 	await saveFiniteSyncState(attempted);
@@ -145,12 +183,13 @@ export const syncFinite = async (): Promise<FiniteSyncState> => {
 			attempted,
 			usage,
 			snoozes,
+			timelineEvents,
 			attempted.settingsDirty ? localSettings : null,
 			attempted.settingsDirty ? attempted.settingsRevision ?? 1 : null,
 		);
 
 		if (attempted.settingsDirty && !response.settingsApplied) {
-			response = await postSync(attempted, usage, snoozes, localSettings, response.settingsRevision);
+			response = await postSync(attempted, usage, snoozes, timelineEvents, localSettings, response.settingsRevision);
 		}
 
 		const settingsWon = !attempted.settingsDirty || response.settingsApplied;
@@ -165,6 +204,7 @@ export const syncFinite = async (): Promise<FiniteSyncState> => {
 			lastUploadedUsage: usage,
 			installations: response.installations,
 		};
+		await removeAcknowledgedTimelineEvents(timelineEvents);
 		await saveFiniteSyncState(synced);
 		return synced;
 	} catch (error) {

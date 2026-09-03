@@ -5,10 +5,10 @@ import type { DesiredRegionState, FromServiceWorkerMessage, ToServiceWorkerMessa
 import type { UsageStatus } from '../../messaging/messages';
 import { BlockerPanel } from '../../shared/blocker-panel';
 import { UsageOverlay } from '../../shared/usage-overlay';
-import type { Theme, UsageCategory } from '../../storage/schema';
+import type { Theme, TimelineActivityReason, UsageCategory, UsageSurfaceId } from '../../storage/schema';
 import type { Region, RegionId, SiteId } from '../../types/sitelist';
 import { USAGE_HEARTBEAT_MS } from '../../usage/usage-metrics';
-import { classifySurface, siteIdForHost } from '../../usage/categories';
+import { classifySurfaceDetails, siteIdForHost } from '../../usage/categories';
 import themeLight from '../../themes/light.css?raw';
 import nfeStyles from './nfe-container.css?raw';
 import sharedStyles from '../../shared/styles.css?raw';
@@ -51,6 +51,7 @@ type ContentScriptState = {
 	ready?: boolean;
 	siteId: SignalObj<SiteId | null>;
 	category: SignalObj<UsageCategory>;
+	surfaceId: SignalObj<UsageSurfaceId>;
 	usage: SignalObj<UsageStatus | null>;
 	overlays: OverlayState[];
 	theme: {
@@ -65,6 +66,7 @@ const state: ContentScriptState = {
 	overlays: [],
 	siteId: signalObj<SiteId | null>(null),
 	category: signalObj<UsageCategory>('intentional'),
+	surfaceId: signalObj<UsageSurfaceId>('other'),
 	usage: signalObj<UsageStatus | null>(null),
 	theme: {
 		css: null,
@@ -117,12 +119,14 @@ const sendMessage = async <Response = any>(message: ToServiceWorkerMessage): Pro
 };
 
 const isUsageActive = () => document.visibilityState === 'visible' && document.hasFocus();
-const reportUsageActivity = async () => {
+const reportUsageActivity = async (reason: TimelineActivityReason = 'heartbeat') => {
 	const previousSnoozeUntil = state.usage.get()?.snoozeUntil ?? null;
 	const usage = await sendMessage<UsageStatus>({
 		type: 'trackUsageActivity',
 		active: isUsageActive(),
 		category: state.category.get(),
+		surfaceId: state.surfaceId.get(),
+		reason,
 	});
 	if (usage != null) {
 		state.usage.set(usage);
@@ -132,18 +136,38 @@ const reportUsageActivity = async () => {
 };
 
 const setupUsageTracking = () => {
-	window.addEventListener('focus', reportUsageActivity);
-	window.addEventListener('blur', reportUsageActivity);
-	document.addEventListener('visibilitychange', reportUsageActivity);
+	window.addEventListener('focus', () => reportUsageActivity('focus'));
+	window.addEventListener('blur', () => reportUsageActivity('blur'));
+	document.addEventListener('visibilitychange', () => reportUsageActivity(
+		document.visibilityState === 'visible' ? 'visible' : 'hidden'
+	));
 	window.addEventListener('pagehide', () => sendMessage({
 		type: 'trackUsageActivity',
 		active: false,
 		category: state.category.get(),
+		surfaceId: state.surfaceId.get(),
+		reason: 'pagehide',
 	}));
 	usageHeartbeatTimer = setInterval(() => {
 		if (isUsageActive()) reportUsageActivity();
 	}, USAGE_HEARTBEAT_MS);
-	reportUsageActivity();
+	reportUsageActivity('page_load');
+};
+
+const recordedInterventionKeys = new Set<string>();
+
+const recordBlockerShownOnce = (category: Exclude<UsageCategory, 'messages'> = currentLimitedCategory()) => {
+	const siteId = state.siteId.get();
+	if (siteId == null) return;
+	const key = `${siteId}:${window.location.pathname}:${state.surfaceId.get()}`;
+	if (recordedInterventionKeys.has(key)) return;
+	recordedInterventionKeys.add(key);
+	sendMessage({
+		type: 'recordIntervention',
+		interventionKind: 'blocker_shown',
+		category,
+		surfaceId: state.surfaceId.get(),
+	}).catch(() => recordedInterventionKeys.delete(key));
 };
 
 const createOverlay = (refEl: Element, el: Element, position: 'fixed' | 'absolute', zIndex: number) => {
@@ -227,6 +251,7 @@ const tryInject = () => {
 
 		const referenceStillExists = region.overlay == null || document.contains(region.overlay.referenceElement);
 		if (region.injectedElement != null && document.contains(region.injectedElement) && referenceStillExists) {
+			recordBlockerShownOnce(region.config.category ?? currentLimitedCategory());
 			continue;
 		}
 
@@ -293,10 +318,12 @@ const tryInject = () => {
 					theme={state.theme.id.get}
 					usage={state.usage.get}
 					category={() => region.config.category ?? currentLimitedCategory()}
+					surfaceId={state.surfaceId.get}
 				/>
 			), container);
 
 			region.injectedElement = nfeElement;
+			recordBlockerShownOnce(region.config.category ?? currentLimitedCategory());
 			break;
 		}
 	}
@@ -576,7 +603,7 @@ const scheduleDomRefresh = () => {
 		refreshScheduled = false;
 		applyRegionBehaviors();
 		applyDynamicRegions();
-		updateSurfaceCategory();
+		updateSurfaceCategory('surface_change');
 		removeBlockedDomRegions();
 		pauseBlockedMedia();
 		tryInject();
@@ -627,8 +654,8 @@ const hasInstagramSuggestion = () => {
 
 const classifyCurrentSurface = () => {
 	const siteId = state.siteId.get() ?? siteIdForHost(window.location.host);
-	if (siteId == null) return 'intentional' as UsageCategory;
-	return classifySurface(siteId, window.location.pathname, {
+	if (siteId == null) return { category: 'intentional' as UsageCategory, surfaceId: 'other' as UsageSurfaceId };
+	return classifySurfaceDetails(siteId, window.location.pathname, {
 		instagramSuggested: siteId === ('instagram' as SiteId) && hasInstagramSuggestion(),
 		twitterTimeline: siteId === ('twitter' as SiteId) ? twitterTimeline() : undefined,
 		provenance: currentProvenance(),
@@ -642,12 +669,13 @@ const requestSiteDetails = () => sendMessage({
 	token,
 });
 
-const updateSurfaceCategory = () => {
-	const category = classifyCurrentSurface();
-	if (category === state.category.get()) return;
-	state.category.set(category);
+const updateSurfaceCategory = (reason: Extract<TimelineActivityReason, 'navigation' | 'surface_change'>) => {
+	const surface = classifyCurrentSurface();
+	if (surface.category === state.category.get() && surface.surfaceId === state.surfaceId.get()) return;
+	state.category.set(surface.category);
+	state.surfaceId.set(surface.surfaceId);
 	requestSiteDetails();
-	reportUsageActivity();
+	reportUsageActivity(reason);
 };
 
 document.addEventListener('click', event => {
@@ -705,7 +733,9 @@ const injectUsageOverlay = () => {
 	render(() => <UsageOverlay status={state.usage.get} siteId={state.siteId.get} />, container);
 };
 
-state.category.set(classifyCurrentSurface());
+const initialSurface = classifyCurrentSurface();
+state.category.set(initialSurface.category);
+state.surfaceId.set(initialSurface.surfaceId);
 
 domReady.then(() => {
 	injectUsageOverlay();
@@ -726,8 +756,7 @@ setInterval(() => {
 	if (!extensionContextValid) return;
 	if (path === window.location.pathname) return;
 	path = window.location.pathname;
-	state.category.set(classifyCurrentSurface());
-	requestSiteDetails();
+	updateSurfaceCategory('navigation');
 }, 50);
 
 const setCss = (css: string) => {
@@ -770,6 +799,7 @@ const patchState = (regions: DesiredRegionState[]) => {
 
 		if (region.injectedElement != null) {
 			region.injectedElement.style.display = isRegionBlockActive(region) ? 'block' : 'none';
+			if (isRegionBlockActive(region)) recordBlockerShownOnce(region.config.category ?? currentLimitedCategory());
 		}
 
 		if (region.css != null && isRegionBlockActive(region)) css += `${region.css}\n`;

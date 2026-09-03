@@ -53,7 +53,7 @@ export const SyncPanel = () => {
 		<Show when={state.finiteSync.get()?.paired} fallback={<>
 			<div class="sync-intro">
 				<strong>Pair this browser</strong>
-				<p>Enter a one-time code from your Zenithar instance. Finite uses its own installation token and does not take over your Vckry app session.</p>
+				<p>Enter a one-time code from vckry. Finite uses its own installation token and does not take over your vckry app session.</p>
 			</div>
 			<div class="sync-pair-form">
 				<label>
@@ -81,6 +81,6 @@ export const SyncPanel = () => {
 		<Show when={error() ?? state.finiteSync.get()?.lastError}>
 			<p class="sync-error">{error() ?? state.finiteSync.get()?.lastError}</p>
 		</Show>
-		<p class="panel-note">Only site, category, totals, limits, settings, and snooze outcomes sync. URLs and page content are never recorded.</p>
+		<p class="panel-note">Privacy-safe site surfaces, activity spans, intervention events, totals, limits, settings, and snooze outcomes sync. URLs and page content are never recorded.</p>
 	</div>;
 };

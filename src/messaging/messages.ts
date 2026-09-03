@@ -1,5 +1,5 @@
 import { getBrowser } from "/lib/webextension";
-import type { FiniteSyncState, Theme, UsageCategory, UsageLimits } from "/storage/schema";
+import type { FiniteSyncState, InterventionKind, Theme, TimelineActivityReason, UsageCategory, UsageLimits, UsageSurfaceId } from "/storage/schema";
 import type { Region, RegionId, SiteId } from "/types/sitelist";
 
 export const sendToServiceWorker = async <Response = any>(msg: ToServiceWorkerMessage): Promise<Response> => {
@@ -53,7 +53,7 @@ type OptionsUpdated = {
 	type: 'nfe#optionsUpdated',
 }
 
-export type ToServiceWorkerMessage = RequestSiteDetails | OpenOptionsPage | CloseCurrentTab | TrackUsageActivity | NotifyOptionsUpdated | SetSiteTheme | EnableSite | DisableSite | Snooze | ReadSnooze | SaveUsageLimits | ReadUsageLimits | PairFiniteSync | ReadFiniteSync | SyncFiniteNow | DisconnectFiniteSync;
+export type ToServiceWorkerMessage = RequestSiteDetails | OpenOptionsPage | CloseCurrentTab | TrackUsageActivity | RecordIntervention | NotifyOptionsUpdated | SetSiteTheme | EnableSite | DisableSite | Snooze | ReadSnooze | SaveUsageLimits | ReadUsageLimits | PairFiniteSync | ReadFiniteSync | SyncFiniteNow | DisconnectFiniteSync;
 
 // Request site details from service worker.
 type RequestSiteDetails = {
@@ -75,6 +75,15 @@ type TrackUsageActivity = {
 	type: 'trackUsageActivity',
 	active: boolean,
 	category: UsageCategory,
+	surfaceId: UsageSurfaceId,
+	reason: TimelineActivityReason,
+};
+
+type RecordIntervention = {
+	type: 'recordIntervention',
+	interventionKind: InterventionKind,
+	category: Exclude<UsageCategory, 'messages'>,
+	surfaceId: UsageSurfaceId,
 };
 
 type NotifyOptionsUpdated = {
@@ -104,6 +113,7 @@ type Snooze = {
 	triggerContext: 'blocker' | 'limit' | 'settings',
 	sourceSiteId?: SiteId,
 	sourceSurfaceId?: RegionId,
+	usageSurfaceId?: UsageSurfaceId,
 }
 
 type ReadSnooze = {

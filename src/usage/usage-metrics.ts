@@ -12,15 +12,14 @@ export const USAGE_HEARTBEAT_MS = 15 * 1000;
 export const MAX_USAGE_CHECKPOINT_MS = 30 * 1000;
 export const USAGE_RETENTION_DAYS = 90;
 
-const londonDateFormatter = new Intl.DateTimeFormat('en-CA', {
-	timeZone: 'Europe/London',
+const localDateFormatter = new Intl.DateTimeFormat('en-CA', {
 	year: 'numeric',
 	month: '2-digit',
 	day: '2-digit',
 });
 
 export const dateKeyForTimestamp = (timestamp: number): string => {
-	const parts = londonDateFormatter.formatToParts(new Date(timestamp));
+	const parts = localDateFormatter.formatToParts(new Date(timestamp));
 	const value = (type: Intl.DateTimeFormatPartTypes) => parts.find(part => part.type === type)?.value ?? '';
 	return `${value('year')}-${value('month')}-${value('day')}`;
 };
@@ -246,6 +245,7 @@ export const pruneUsageMetrics = (usage: UsageMetrics, now: number): void => {
 
 export const emptyUsageMetrics = (): UsageMetrics => ({ version: 2, days: {} });
 export const emptyUsageRuntimeState = (): UsageRuntimeState => ({
+	timelineActive: undefined,
 	lastActivityBySurface: {},
 	categorySessions: {},
 	limitReachedKeys: [],

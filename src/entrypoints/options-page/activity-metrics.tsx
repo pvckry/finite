@@ -32,7 +32,6 @@ export const formatDuration = (milliseconds: number): string => {
 };
 
 const formatDate = (date: string): string => new Date(`${date}T12:00:00Z`).toLocaleDateString(undefined, {
-	timeZone: 'Europe/London',
 	weekday: 'short',
 	month: 'short',
 	day: 'numeric',
@@ -129,6 +128,6 @@ export const ActivityMetrics = () => {
 			</div>
 		</Show>
 
-		<p class="activity-privacy">Finite records categories and totals—not URLs, titles, searches, messages, or page content. Paired browsers keep 90 days on Zenithar.</p>
+		<p class="activity-privacy">Finite records privacy-safe site activity and interventions—not URLs, titles, searches, account names, messages, or page content. Chrome keeps 90 days of daily summaries; paired raw events are retained privately on Zenithar.</p>
 	</div>;
 };
