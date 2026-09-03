@@ -206,8 +206,10 @@ setInterval(() => {
 	scheduleDomRefresh();
 }, 1000);
 
-const isSnoozing = () => (state.usage.get()?.snoozeUntil ?? 0) > Date.now();
-const isRegionBlockActive = (region: RegionState) => region.enabled === true && !isSnoozing();
+// The service worker resolves each region against its own content category and
+// category-specific snooze. Keeping a second page-wide snooze gate here would
+// accidentally reveal algorithmic regions during an intentional snooze.
+const isRegionBlockActive = (region: RegionState) => region.enabled === true;
 const isDynamicRegion = (region: Region) => region.textPatterns != null || region.groupSelector != null;
 const currentLimitedCategory = (): Exclude<UsageCategory, 'messages'> => {
 	const category = state.category.get();
