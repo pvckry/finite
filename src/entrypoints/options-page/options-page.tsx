@@ -8,6 +8,8 @@ import { SitesTabContent } from "./tabs/sites";
 import { SnoozeTabContent } from "./tabs/snooze";
 import { versionText } from "/lib/util";
 import { ActivityMetrics } from "./activity-metrics";
+import { UsageLimitsPanel } from "./limits";
+import { SyncPanel } from "./sync-panel";
 
 const SettingsSection: ParentComponent<{ kicker: string, title: string, description: string }> = ({ kicker, title, description, children }) => (
 	<section class="settings-section">
@@ -52,11 +54,23 @@ const OptionsPage = () => {
 						<ActivityMetrics />
 					</SettingsSection>
 
+					<SettingsSection kicker="Boundaries" title="Daily limits" description="Use one shared allowance across both browsers; messages are always available.">
+						<UsageLimitsPanel />
+					</SettingsSection>
+
 					<SettingsSection kicker="Take a break" title="Snooze" description="Temporarily restore blocked regions without changing your setup.">
 						<div class="section-stack">
 							<Snooze />
+							<div class="subsection-heading">
+								<strong>Snooze interaction</strong>
+								<span>Choose how a snooze starts for both limited categories.</span>
+							</div>
 							<SnoozeTabContent />
 						</div>
+					</SettingsSection>
+
+					<SettingsSection kicker="Across devices" title="Browser sync" description="Consolidate activity and keep settings aligned through your private Zenithar instance.">
+						<SyncPanel />
 					</SettingsSection>
 
 				</div>

@@ -17,6 +17,7 @@ export const site: Site = {
 				{
 					id: regionId('feed'),
 					title: 'Main feed',
+					category: 'algorithmic',
 					selectors: ['ytd-browse'],
 					paths: 'inherit',
 					type: 'hide',
@@ -29,6 +30,7 @@ export const site: Site = {
 				{
 					id: regionId('explore-nav'),
 					title: 'Explore navigation menu',
+					category: 'algorithmic',
 					type: 'remove',
 					paths: '*',
 					selectors: ['ytd-guide-section-renderer:nth-child(4)']
@@ -36,6 +38,7 @@ export const site: Site = {
 				{
 					id: regionId('end-screen-suggested'),
 					title: 'End screen suggested videos',
+					category: 'algorithmic',
 					paths: '*',
 					type: 'remove',
 					selectors: ['.ytp-fullscreen-grid'],
@@ -43,6 +46,7 @@ export const site: Site = {
 				{
 					id: regionId('sidebar-suggested'),
 					title: 'Suggested videos sidebar',
+					category: 'algorithmic',
 					type: 'remove',
 					paths: ['/watch'],
 					selectors: [
@@ -76,6 +80,12 @@ export const site: Site = {
 						'ytd-item-section-renderer[target-id="comments-section"]',
 					],
 					removeFromDom: true,
+					extraCss: `
+						ytd-watch-flexy #below.ytd-watch-flexy,
+						ytd-watch-flexy #primary-inner.ytd-watch-flexy {
+							min-height: 0 !important;
+						}
+					`,
 				},
 				{
 					id: regionId('live-chat'),
@@ -107,6 +117,7 @@ export const site: Site = {
 				{
 					id: regionId('shorts-feed'),
 					title: 'Shorts feed',
+					category: 'algorithmic',
 					type: 'hide',
 					paths: [{ regexp: '^/shorts(?:/|$)' }],
 					selectors: ['ytd-shorts', '#shorts-inner-container'],
@@ -119,6 +130,7 @@ export const site: Site = {
 				{
 					id: regionId('shorts-button'),
 					title: 'Shorts navigation buttons',
+					category: 'algorithmic',
 					type: 'remove',
 					paths: '*',
 					selectors: [
@@ -129,6 +141,7 @@ export const site: Site = {
 				{
 					id: regionId('shorts-shelves'),
 					title: 'Shorts shelves and search results',
+					category: 'algorithmic',
 					type: 'remove',
 					paths: '*',
 					selectors: [

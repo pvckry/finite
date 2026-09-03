@@ -3,6 +3,7 @@ import type { SnoozeMode } from "/storage/schema";
 import { useOptionsPageState } from "../../state";
 import { saveSnoozeMode } from "/storage/storage";
 import { LockedSettingsOverlay, SettingsLockFooter } from "../../lock";
+import { sendToServiceWorker } from "/messaging/messages";
 
 const SnoozeModeOption: ParentComponent<{ mode: SnoozeMode, title: string }> = ({ mode, title, children }) => {
 	const state = useOptionsPageState();
@@ -10,6 +11,7 @@ const SnoozeModeOption: ParentComponent<{ mode: SnoozeMode, title: string }> = (
 	const onClick = async () => {
 		await saveSnoozeMode(mode);
 		state.snoozeMode.refetch();
+		await sendToServiceWorker({ type: 'notifyOptionsUpdated' });
 	}
 
 	return <li class="bg-darken-100 rounded">

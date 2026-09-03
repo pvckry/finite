@@ -5,6 +5,8 @@ import { loadEnabledSites, loadSnoozeMode } from "../../storage/storage";
 import { getBrowser, type Permissions } from "../../lib/webextension";
 import { resourceObj, signalObj } from "/lib/solid-util";
 import { StorageState } from "./state/storage";
+import type { FiniteSyncView } from "/messaging/messages";
+import type { SnoozeState, UsageCategory } from "/storage/schema";
 
 type SiteState = {
 	enabled: boolean,
@@ -19,8 +21,9 @@ export class OptionsPageState {
 
 	storage = new StorageState();
 
-	snoozeState = resourceObj(createResource<number | null>(async () => browser.runtime.sendMessage({ type: 'readSnooze' })));
+	snoozeState = resourceObj(createResource<SnoozeState>(async () => browser.runtime.sendMessage({ type: 'readSnooze' })));
 	snoozeMode = resourceObj(createResource(loadSnoozeMode));
+	finiteSync = resourceObj(createResource<FiniteSyncView>(async () => browser.runtime.sendMessage({ type: 'readFiniteSync' })));
 	enabledSites = resourceObj(createResource(loadEnabledSites));
 	permissions = resourceObj(createResource(() => browser.permissions.getAll()));
 
@@ -102,27 +105,31 @@ export class OptionsPageState {
 		this.requestPermissions({ origins, permissions: [] });
 	}
 
-	async startSnooze(durationMs: number) {
+	async startSnooze(category: Exclude<UsageCategory, 'messages'>, durationMs: number) {
 		await browser.runtime.sendMessage({
 			type: 'snooze',
+			category,
 			until: this.clock.get() + durationMs,
+			triggerContext: 'settings',
 		})
 
 		this.snoozeState.refetch();
 	}
 
-	async cancelSnooze() {
+	async cancelSnooze(category: Exclude<UsageCategory, 'messages'>) {
 		await browser.runtime.sendMessage({
 			type: 'snooze',
+			category,
 			until: this.clock.get(),
+			triggerContext: 'settings',
 		})
 		this.snoozeState.refetch();
 	}
 
-	snoozeRemaining() {
-		const snooze = this.snoozeState.get();
+	snoozeRemaining(category: Exclude<UsageCategory, 'messages'>) {
+		const snooze = this.snoozeState.get()?.active[category];
 		if (snooze == null) return 0;
-		return Math.max(0, snooze - this.clock.get());
+		return Math.max(0, snooze.requestedEndAt - this.clock.get());
 	}
 
 	async setSettingsLocked(locked: boolean) {
@@ -130,6 +137,7 @@ export class OptionsPageState {
 			this.selectedSiteId.set(null);
 		}
 		await this.storage.setSettingsLocked(locked);
+		await browser.runtime.sendMessage({ type: 'notifyOptionsUpdated' });
 	}
 
 	/**
@@ -140,7 +148,7 @@ export class OptionsPageState {
 	}
 
 	canUnlockSettings() {
-		return this.snoozeRemaining() > 0;
+		return this.snoozeRemaining('algorithmic') > 0 || this.snoozeRemaining('intentional') > 0;
 	}
 }
 

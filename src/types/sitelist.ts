@@ -38,6 +38,8 @@ export type Region = {
 	selectors: string[],
 	title: string,
 	type: 'hide' | 'remove' | 'dull' | 'none',
+	/** Category restored when this region is snoozed. Defaults to the current page category. */
+	category?: 'algorithmic' | 'intentional',
 	paths: 'inherit' | '*' | PathList,
 	default?: boolean,
 	inject?: Inject,

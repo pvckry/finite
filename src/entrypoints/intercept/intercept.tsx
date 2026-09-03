@@ -2,10 +2,14 @@ import { render } from 'solid-js/web';
 import { getBrowser } from '../../lib/webextension';
 import { signalObj, type SignalObj } from '../../lib/solid-util';
 import type { DesiredRegionState, FromServiceWorkerMessage, ToServiceWorkerMessage } from '../../messaging/messages';
+import type { UsageStatus } from '../../messaging/messages';
 import { BlockerPanel } from '../../shared/blocker-panel';
-import type { Theme } from '../../storage/schema';
+import { UsageOverlay } from '../../shared/usage-overlay';
+import type { Theme, UsageCategory } from '../../storage/schema';
 import type { Region, RegionId, SiteId } from '../../types/sitelist';
 import { USAGE_HEARTBEAT_MS } from '../../usage/usage-metrics';
+import { classifySurface, siteIdForHost } from '../../usage/categories';
+import themeLight from '../../themes/light.css?raw';
 import nfeStyles from './nfe-container.css?raw';
 import sharedStyles from '../../shared/styles.css?raw';
 
@@ -13,6 +17,8 @@ const browser = getBrowser();
 const token = Math.floor(Math.random() * 1000000);
 let extensionContextValid = true;
 let usageHeartbeatTimer: ReturnType<typeof setInterval> | undefined;
+let usageRoot: HTMLDivElement | undefined;
+let usageThemeStyleElement: HTMLStyleElement | undefined;
 
 const domReady = new Promise<Document>(resolve => {
 	const timer = setInterval(() => {
@@ -41,11 +47,11 @@ type RegionState = {
 };
 
 type ContentScriptState = {
-	snoozeUntil?: number;
-	snoozeTimer?: ReturnType<typeof setTimeout>;
 	injectedPageStyleElement?: HTMLStyleElement;
 	ready?: boolean;
 	siteId: SignalObj<SiteId | null>;
+	category: SignalObj<UsageCategory>;
+	usage: SignalObj<UsageStatus | null>;
 	dailyBlockCount: SignalObj<number | null>;
 	overlays: OverlayState[];
 	theme: {
@@ -59,6 +65,8 @@ const state: ContentScriptState = {
 	regions: new Map(),
 	overlays: [],
 	siteId: signalObj<SiteId | null>(null),
+	category: signalObj<UsageCategory>('intentional'),
+	usage: signalObj<UsageStatus | null>(null),
 	dailyBlockCount: signalObj<number | null>(null),
 	theme: {
 		css: null,
@@ -70,7 +78,8 @@ const invalidateContentScript = () => {
 	if (!extensionContextValid) return;
 	extensionContextValid = false;
 	state.injectedPageStyleElement?.remove();
-	if (state.snoozeTimer != null) clearTimeout(state.snoozeTimer);
+	usageRoot?.remove();
+	if (originalDocumentOverflow != null) document.documentElement.style.overflow = originalDocumentOverflow;
 	if (usageHeartbeatTimer != null) clearInterval(usageHeartbeatTimer);
 
 	for (const region of state.regions.values()) {
@@ -110,13 +119,29 @@ const sendMessage = async <Response = any>(message: ToServiceWorkerMessage): Pro
 };
 
 const isUsageActive = () => document.visibilityState === 'visible' && document.hasFocus();
-const reportUsageActivity = () => sendMessage({ type: 'trackUsageActivity', active: isUsageActive() });
+const reportUsageActivity = async () => {
+	const previousSnoozeUntil = state.usage.get()?.snoozeUntil ?? null;
+	const usage = await sendMessage<UsageStatus>({
+		type: 'trackUsageActivity',
+		active: isUsageActive(),
+		category: state.category.get(),
+	});
+	if (usage != null) {
+		state.usage.set(usage);
+		applyLimitScrollLock();
+		if (previousSnoozeUntil !== usage.snoozeUntil) requestSiteDetails();
+	}
+};
 
 const setupUsageTracking = () => {
 	window.addEventListener('focus', reportUsageActivity);
 	window.addEventListener('blur', reportUsageActivity);
 	document.addEventListener('visibilitychange', reportUsageActivity);
-	window.addEventListener('pagehide', () => sendMessage({ type: 'trackUsageActivity', active: false }));
+	window.addEventListener('pagehide', () => sendMessage({
+		type: 'trackUsageActivity',
+		active: false,
+		category: state.category.get(),
+	}));
 	usageHeartbeatTimer = setInterval(() => {
 		if (isUsageActive()) reportUsageActivity();
 	}, USAGE_HEARTBEAT_MS);
@@ -173,11 +198,21 @@ const checkDom = () => {
 };
 
 window.addEventListener('resize', checkDom);
-setInterval(checkDom, 1000);
+setInterval(() => {
+	checkDom();
+	// Instagram and X frequently recycle existing nodes without adding a new subtree.
+	// A periodic pass catches text/attribute changes that their frameworks do not expose
+	// as child-list mutations and also keeps blocked media paused.
+	scheduleDomRefresh();
+}, 1000);
 
-const isSnoozing = () => state.snoozeUntil != null && state.snoozeUntil > Date.now();
+const isSnoozing = () => (state.usage.get()?.snoozeUntil ?? 0) > Date.now();
 const isRegionBlockActive = (region: RegionState) => region.enabled === true && !isSnoozing();
 const isDynamicRegion = (region: Region) => region.textPatterns != null || region.groupSelector != null;
+const currentLimitedCategory = (): Exclude<UsageCategory, 'messages'> => {
+	const category = state.category.get();
+	return category === 'messages' ? 'intentional' : category;
+};
 
 const cleanupRegionInjection = (region: RegionState) => {
 	region.injectedElement?.remove();
@@ -200,6 +235,10 @@ const tryInject = () => {
 	for (const region of state.regions.values()) {
 		const injectConfig = region.config.inject;
 		if (injectConfig == null || !isRegionBlockActive(region)) continue;
+		if (isDynamicRegion(region.config) && region.dynamicElements.size === 0) {
+			cleanupRegionInjection(region);
+			continue;
+		}
 
 		const referenceStillExists = region.overlay == null || document.contains(region.overlay.referenceElement);
 		if (region.injectedElement != null && document.contains(region.injectedElement) && referenceStillExists) {
@@ -269,6 +308,8 @@ const tryInject = () => {
 					siteId={state.siteId.get}
 					theme={state.theme.id.get}
 					dailyCount={state.dailyBlockCount.get}
+					usage={state.usage.get}
+					category={() => region.config.category ?? currentLimitedCategory()}
 				/>
 			), container);
 
@@ -397,11 +438,13 @@ const applyDynamicRegions = () => {
 		for (const element of region.dynamicElements) element.removeAttribute(attribute);
 		region.dynamicElements.clear();
 
-		if (!isRegionBlockActive(region) || !isDynamicRegion(region.config)) continue;
-		const markBlocked = (candidate: Element) => {
-			candidate.setAttribute(attribute, '');
+		if (!isDynamicRegion(region.config)) continue;
+		const recordCandidate = (candidate: Element) => {
 			region.dynamicElements.add(candidate);
-			pauseMedia(candidate);
+			if (isRegionBlockActive(region)) {
+				candidate.setAttribute(attribute, '');
+				pauseMedia(candidate);
+			}
 		};
 
 		for (const selector of region.config.selectors) {
@@ -409,14 +452,14 @@ const applyDynamicRegions = () => {
 				if (region.config.groupSelector != null) {
 					for (const match of candidate.querySelectorAll(region.config.groupSelector)) {
 						const container = groupContainer(region.config, match, candidate);
-						if (container != null) markBlocked(container);
+						if (container != null) recordCandidate(container);
 					}
 					continue;
 				}
 
 				if (region.config.textMatchMode === 'following-posts') {
 					for (const boundary of matchingTextNodes(region.config, candidate)) {
-						for (const element of postsAfterBoundary(boundary, candidate)) markBlocked(element);
+						for (const element of postsAfterBoundary(boundary, candidate)) recordCandidate(element);
 					}
 					continue;
 				}
@@ -424,7 +467,7 @@ const applyDynamicRegions = () => {
 				if (region.config.textMatchMode === 'closest-post') {
 					for (const marker of matchingTextNodes(region.config, candidate)) {
 						const post = findPostContainer(marker, candidate);
-						if (post != null) markBlocked(post);
+						if (post != null) recordCandidate(post);
 					}
 					continue;
 				}
@@ -432,13 +475,13 @@ const applyDynamicRegions = () => {
 				if (region.config.textMatchMode === 'active-tab-timeline') {
 					for (const tab of matchingTextNodes(region.config, candidate)) {
 						const timeline = activeTimelineForTab(tab, candidate);
-						if (timeline != null) markBlocked(timeline);
+						if (timeline != null) recordCandidate(timeline);
 					}
 					continue;
 				}
 
 				if (!regionMatchesText(region.config, candidate)) continue;
-				markBlocked(candidate);
+				recordCandidate(candidate);
 			}
 		}
 	}
@@ -551,16 +594,148 @@ const scheduleDomRefresh = () => {
 		refreshScheduled = false;
 		applyRegionBehaviors();
 		applyDynamicRegions();
+		updateSurfaceCategory();
 		removeBlockedDomRegions();
 		pauseBlockedMedia();
 		tryInject();
 	});
 };
 
+const provenanceKey = 'finite-category-provenance';
+const currentProvenance = (): UsageCategory | undefined => {
+	try {
+		const raw = sessionStorage.getItem(provenanceKey);
+		if (raw == null) return undefined;
+		const value = JSON.parse(raw) as { host?: string; path?: string; category?: UsageCategory; at?: number };
+		if (value.host !== window.location.host || value.path !== window.location.pathname || (value.at ?? 0) < Date.now() - 2 * 60_000) {
+			return undefined;
+		}
+		return value.category;
+	} catch {
+		return undefined;
+	}
+};
+
+const twitterTimeline = (): 'for-you' | 'following' | undefined => {
+	for (const tab of document.querySelectorAll<HTMLElement>('[role="tablist"] [role="tab"]')) {
+		if (tab.getAttribute('aria-selected') !== 'true' && tab.querySelector('[aria-selected="true"]') == null) continue;
+		const label = tab.textContent?.trim() ?? '';
+		if (/^For you$/i.test(label)) return 'for-you';
+		if (/^Following$/i.test(label)) return 'following';
+	}
+	return undefined;
+};
+
+const isVisibleInViewport = (element: Element) => {
+	const style = getComputedStyle(element);
+	if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return false;
+	const bounds = element.getBoundingClientRect();
+	return bounds.width > 0 && bounds.height > 0
+		&& bounds.bottom > 0 && bounds.right > 0
+		&& bounds.top < window.innerHeight && bounds.left < window.innerWidth;
+};
+
+const hasInstagramSuggestion = () => {
+	for (const id of ['suggested-posts', 'suggested-feed-after-caught-up'] as RegionId[]) {
+		const region = state.regions.get(id);
+		if (region != null && Array.from(region.dynamicElements).some(isVisibleInViewport)) return true;
+	}
+	return false;
+};
+
+const classifyCurrentSurface = () => {
+	const siteId = state.siteId.get() ?? siteIdForHost(window.location.host);
+	if (siteId == null) return 'intentional' as UsageCategory;
+	return classifySurface(siteId, window.location.pathname, {
+		instagramSuggested: siteId === ('instagram' as SiteId) && hasInstagramSuggestion(),
+		twitterTimeline: siteId === ('twitter' as SiteId) ? twitterTimeline() : undefined,
+		provenance: currentProvenance(),
+	});
+};
+
+const requestSiteDetails = () => sendMessage({
+	type: 'requestSiteDetails',
+	path: window.location.pathname,
+	category: state.category.get(),
+	token,
+});
+
+const updateSurfaceCategory = () => {
+	const category = classifyCurrentSurface();
+	if (category === state.category.get()) return;
+	state.category.set(category);
+	requestSiteDetails();
+	reportUsageActivity();
+};
+
+document.addEventListener('click', event => {
+	if (state.category.get() !== 'algorithmic') return;
+	const target = event.target;
+	if (!(target instanceof Element)) return;
+	const anchor = target.closest<HTMLAnchorElement>('a[href]');
+	if (anchor == null) return;
+	try {
+		const url = new URL(anchor.href, window.location.href);
+		if (url.host !== window.location.host) return;
+		sessionStorage.setItem(provenanceKey, JSON.stringify({
+			host: url.host,
+			path: url.pathname,
+			category: 'algorithmic',
+			at: Date.now(),
+		}));
+	} catch {
+		// Ignore malformed application-generated links.
+	}
+}, true);
+
+let originalDocumentOverflow: string | undefined;
+const applyLimitScrollLock = () => {
+	const locked = state.usage.get()?.limitReached === true;
+	if (locked && originalDocumentOverflow == null) {
+		originalDocumentOverflow = document.documentElement.style.overflow;
+		document.documentElement.style.overflow = 'hidden';
+	} else if (!locked && originalDocumentOverflow != null) {
+		document.documentElement.style.overflow = originalDocumentOverflow;
+		originalDocumentOverflow = undefined;
+	}
+};
+
+const injectUsageOverlay = () => {
+	const root = document.createElement('div');
+	usageRoot = root;
+	root.id = 'finite-usage-root';
+	root.style.position = 'relative';
+	root.style.zIndex = '2147483647';
+	document.body.appendChild(root);
+	const shadow = root.attachShadow({ mode: 'open' });
+	const themeStyle = document.createElement('style');
+	themeStyle.textContent = (state.theme.css ?? themeLight).replace(':root', ':host');
+	usageThemeStyleElement = themeStyle;
+	shadow.appendChild(themeStyle);
+	const styles = document.createElement('style');
+	styles.textContent = `${nfeStyles}\n${sharedStyles}`;
+	shadow.appendChild(styles);
+	const container = document.createElement('div');
+	container.id = 'nfe-container';
+	container.style.pointerEvents = 'none';
+	container.style.padding = '0';
+	shadow.appendChild(container);
+	render(() => <UsageOverlay status={state.usage.get} siteId={state.siteId.get} />, container);
+};
+
+state.category.set(classifyCurrentSurface());
+
 domReady.then(() => {
+	injectUsageOverlay();
 	setupUsageTracking();
 	const observer = new MutationObserver(scheduleDomRefresh);
-	observer.observe(document.documentElement, { childList: true, subtree: true });
+	observer.observe(document.documentElement, {
+		childList: true,
+		subtree: true,
+		characterData: true,
+		attributes: true,
+		attributeFilter: ['aria-label', 'aria-selected'],
+	});
 	scheduleDomRefresh();
 });
 
@@ -569,7 +744,8 @@ setInterval(() => {
 	if (!extensionContextValid) return;
 	if (path === window.location.pathname) return;
 	path = window.location.pathname;
-	sendMessage({ type: 'requestSiteDetails', path, token });
+	state.category.set(classifyCurrentSurface());
+	requestSiteDetails();
 }, 50);
 
 const setCss = (css: string) => {
@@ -578,17 +754,6 @@ const setCss = (css: string) => {
 		document.head.appendChild(state.injectedPageStyleElement);
 	}
 	state.injectedPageStyleElement.textContent = css;
-};
-
-const endSnooze = () => {
-	sendMessage({ type: 'requestSiteDetails', path: window.location.pathname, token });
-	state.snoozeTimer = undefined;
-};
-
-const setSnoozeTimer = (snoozeUntil: number | null) => {
-	state.snoozeUntil = snoozeUntil ?? undefined;
-	if (state.snoozeTimer != null) clearTimeout(state.snoozeTimer);
-	if (snoozeUntil != null) state.snoozeTimer = setTimeout(endSnooze, snoozeUntil - Date.now());
 };
 
 const patchState = (regions: DesiredRegionState[]) => {
@@ -650,23 +815,26 @@ browser.runtime.onMessage.addListener(async (msg: FromServiceWorkerMessage) => {
 			}
 		}
 
-		setSnoozeTimer(msg.snoozeUntil != null && msg.snoozeUntil > Date.now() ? msg.snoozeUntil : null);
 		state.ready = true;
 		state.siteId.set(msg.siteId);
+		state.category.set(msg.usage.category);
+		state.usage.set(msg.usage);
 		state.theme.css = msg.theme.css;
 		state.theme.id.set(msg.theme.id);
+		if (usageThemeStyleElement != null) usageThemeStyleElement.textContent = msg.theme.css.replace(':root', ':host');
+		applyLimitScrollLock();
 		await domReady;
 		patchState(msg.regions);
 	}
 
 	if (msg.type === 'nfe#optionsUpdated') {
-		sendMessage({ type: 'requestSiteDetails', path: window.location.pathname, token });
+		requestSiteDetails();
 	}
 });
 
 const pingServiceWorker = () => {
 	if (state.ready || !extensionContextValid) return;
-	sendMessage({ type: 'requestSiteDetails', path: window.location.pathname, token });
+	requestSiteDetails();
 	setTimeout(pingServiceWorker, 25);
 };
 

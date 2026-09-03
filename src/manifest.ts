@@ -6,6 +6,7 @@ export default {
 	"description": packageJson.description,
 	"manifest_version": 3,
 	"permissions": ["storage", "scripting"],
+	"host_permissions": ["https://api.vckry.com/*"],
 	"optional_host_permissions": [
 		"*://www.facebook.com/*",
 		"*://web.facebook.com/*",

@@ -1,6 +1,6 @@
 import { getBrowser } from "/lib/webextension";
-import type { Theme } from "/storage/schema";
-import type { Region, SiteId } from "/types/sitelist";
+import type { FiniteSyncState, Theme, UsageCategory, UsageLimits } from "/storage/schema";
+import type { Region, RegionId, SiteId } from "/types/sitelist";
 
 export const sendToServiceWorker = async <Response = any>(msg: ToServiceWorkerMessage): Promise<Response> => {
 	const browser = getBrowser();
@@ -21,12 +21,23 @@ type SiteDetails = {
 		id: Theme,
 		css: string,
 	}
-	snoozeUntil: number | null,
+	usage: UsageStatus,
 	firstLoadRedirect: {
 		to: string,
 		sessionKey: string,
 	} | null,
 }
+
+export type UsageStatus = {
+	category: UsageCategory,
+	sessionMs: number,
+	dailyMs: number,
+	limitMs: number | null,
+	remainingMs: number | null,
+	limitReached: boolean,
+	snoozeUntil: number | null,
+	updatedAt: number,
+};
 
 export type DesiredRegionState = {
 	config: Region,
@@ -42,12 +53,13 @@ type OptionsUpdated = {
 	type: 'nfe#optionsUpdated',
 }
 
-export type ToServiceWorkerMessage = RequestSiteDetails | OpenOptionsPage | CloseCurrentTab | RecordBlock | TrackUsageActivity | NotifyOptionsUpdated | SetSiteTheme | EnableSite | DisableSite | Snooze | ReadSnooze;
+export type ToServiceWorkerMessage = RequestSiteDetails | OpenOptionsPage | CloseCurrentTab | RecordBlock | TrackUsageActivity | NotifyOptionsUpdated | SetSiteTheme | EnableSite | DisableSite | Snooze | ReadSnooze | SaveUsageLimits | ReadUsageLimits | PairFiniteSync | ReadFiniteSync | SyncFiniteNow | DisconnectFiniteSync;
 
 // Request site details from service worker.
 type RequestSiteDetails = {
 	type: 'requestSiteDetails',
 	path: string,
+	category: UsageCategory,
 	token: number
 };
 
@@ -66,6 +78,7 @@ type RecordBlock = {
 type TrackUsageActivity = {
 	type: 'trackUsageActivity',
 	active: boolean,
+	category: UsageCategory,
 };
 
 type NotifyOptionsUpdated = {
@@ -90,9 +103,46 @@ type DisableSite = {
 
 type Snooze = {
 	type: 'snooze',
-	until: number
+	category: Exclude<UsageCategory, 'messages'>,
+	until: number,
+	triggerContext: 'blocker' | 'limit' | 'settings',
+	sourceSiteId?: SiteId,
+	sourceSurfaceId?: RegionId,
 }
 
 type ReadSnooze = {
 	type: 'readSnooze',
 }
+
+type SaveUsageLimits = {
+	type: 'saveUsageLimits',
+	limits: UsageLimits,
+}
+
+type ReadUsageLimits = {
+	type: 'readUsageLimits',
+}
+
+type PairFiniteSync = {
+	type: 'pairFiniteSync',
+	pairingCode: string,
+	deviceName: string,
+}
+
+type ReadFiniteSync = {
+	type: 'readFiniteSync',
+}
+
+type SyncFiniteNow = {
+	type: 'syncFiniteNow',
+}
+
+type DisconnectFiniteSync = {
+	type: 'disconnectFiniteSync',
+}
+
+export type FiniteSyncView = Pick<FiniteSyncState,
+	'installationId' | 'deviceName' | 'settingsRevision' | 'lastAttemptAt' | 'lastSuccessAt' | 'lastError' | 'installations'
+> & {
+	paired: boolean,
+};

@@ -16,9 +16,9 @@ export const site: Site = {
 			title: 'Stories',
 			type: 'remove',
 			paths: ['/'],
-			selectors: ['main', '[role="main"]'],
+			selectors: ['body'],
 			groupSelector: 'a[href^="/stories/"]',
-			groupAncestorSelectors: ['ul', '[role="list"]'],
+			groupAncestorSelectors: ['ul', '[role="list"]', 'div'],
 			groupMinimum: 2,
 			default: false,
 		},
@@ -26,14 +26,14 @@ export const site: Site = {
 			id: regionId('suggested-posts'),
 			title: 'Suggested posts in the home feed',
 			type: 'remove',
+			category: 'algorithmic',
 			paths: ['/'],
 			selectors: ['main', '[role="main"]'],
-			textSelectors: ['button', '[role="button"]', 'span'],
+			textSelectors: ['button', '[role="button"]', 'span[dir="auto"]', '[aria-label]'],
 			textPatterns: [
 				'^Suggested for you$',
 				'^Suggested posts?$',
 				'^Because you (?:watched|followed|liked).+$',
-				'^Follow$',
 				'^Suggestions pour vous$',
 				'^Vorgeschlagene(?: Beiträge)?$',
 				'^Sugerencias para ti$',
@@ -52,9 +52,10 @@ export const site: Site = {
 			id: regionId('suggested-feed-after-caught-up'),
 			title: 'Suggested feed after you are caught up',
 			type: 'remove',
+			category: 'algorithmic',
 			paths: ['/'],
 			selectors: ['main', '[role="main"]'],
-			textSelectors: ['h1', 'h2', 'h3', '[role="heading"]', 'span'],
+			textSelectors: ['h1', 'h2', 'h3', '[role="heading"]'],
 			textPatterns: [
 				'^Suggested posts?$',
 				'^Publications suggérées$',
@@ -70,16 +71,22 @@ export const site: Site = {
 			id: regionId('suggested-people'),
 			title: 'Suggested accounts',
 			type: 'remove',
+			category: 'algorithmic',
 			paths: ['/'],
 			selectors: ['div:has(> div > a[href="/explore/people/"])']
 		},
 		{
 			id: regionId('explore-suggestions'),
 			title: 'Explore suggestions',
-			type: 'remove',
+			type: 'hide',
+			category: 'algorithmic',
 			paths: ['/explore/'],
-			selectors: ['main[role="main"]', 'main'],
-			removeFromDom: true,
+			selectors: ['main[role="main"]', 'main', '[role="progressbar"]'],
+			extraCss: `
+				body:has(a[href="/explore/"][aria-current="page"]) [role="progressbar"] {
+					display: none !important;
+				}
+			`,
 			inject: {
 				mode: 'fixed-corner',
 				selectors: ['body'],
@@ -90,6 +97,7 @@ export const site: Site = {
 			id: regionId('reels-feed'),
 			title: 'Reels feed',
 			type: 'remove',
+			category: 'algorithmic',
 			paths: [{ regexp: '^/reels?(?:/|$)' }],
 			selectors: ['main[role="main"]', 'main'],
 			inject: {
@@ -102,6 +110,7 @@ export const site: Site = {
 			id: regionId('reels-button'),
 			title: 'Reels navigation button',
 			type: 'remove',
+			category: 'algorithmic',
 			paths: '*',
 			selectors: ['a[href="/reels/"]', 'a[href="/reels"]'],
 		},

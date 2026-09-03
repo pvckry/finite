@@ -1,24 +1,29 @@
 import { getBrowser, type MessageSender, type TabId } from '/lib/webextension';
 import type { Path, PathList, Region, Site, SiteId } from '/types/sitelist';
-import type { DesiredRegionState, FromServiceWorkerMessage, ToServiceWorkerMessage } from '/messaging/messages';
+import type { DesiredRegionState, FiniteSyncView, FromServiceWorkerMessage, ToServiceWorkerMessage, UsageStatus } from '/messaging/messages';
 import {
+	loadCategorySnoozes,
 	loadEnabledSites,
+	loadFiniteSyncState,
 	loadRegionsForSite,
 	loadSitelist,
-	loadSnoozeUntil,
+	loadSnoozeInactivityMs,
+	loadUsageLimits,
 	loadUsageMetrics,
 	loadUsageRuntimeState,
 	migrationPromise,
 	recordDailyBlock,
+	saveCategorySnoozes,
 	saveSiteEnabled,
-	saveSnoozeUntil,
 	saveThemeForSite,
+	saveUsageLimits,
 	saveUsageMetrics,
 	saveUsageRuntimeState,
 } from '/storage/storage';
 import { originsForSite } from '/lib/util';
-import type { Theme } from '/storage/schema';
-import { pruneUsageMetrics, recordUsageActivity } from '/usage/usage-metrics';
+import type { CategorySnooze, FiniteSyncState, SnoozeState, Theme, UsageCategory, UsageMetrics, UsageRuntimeState } from '/storage/schema';
+import { activeSessionMs, dateKeyForTimestamp, incrementLimitReached, localCategoryTotal, pruneUsageMetrics, recordUsageActivity } from '/usage/usage-metrics';
+import { disconnectFinite, pairFinite, syncFinite } from '/sync/finite-sync';
 import themeDark from '/themes/dark.css?raw';
 import themeLight from '/themes/light.css?raw';
 
@@ -86,7 +91,10 @@ browser.runtime.onInstalled.addListener(async (details) => {
 });
 
 // Keep registrations correct after an unpacked-extension reload as well as install/update events.
-migrationPromise.then(syncRegisteredContentScript);
+migrationPromise.then(async () => {
+	await syncRegisteredContentScript();
+	runFiniteSync(true).catch(() => undefined);
+});
 
 const notifyTabsOptionsUpdated = async () => {
 	const tabs = await browser.tabs.query({ url: '*://*/*' });
@@ -94,6 +102,111 @@ const notifyTabsOptionsUpdated = async () => {
 	await Promise.allSettled(
 		tabs.map(tab => sendMessage(tab.id, { type: 'nfe#optionsUpdated' }))
 	);
+};
+
+const syncView = (state: FiniteSyncState): FiniteSyncView => ({
+	installationId: state.installationId,
+	deviceName: state.deviceName,
+	settingsRevision: state.settingsRevision,
+	lastAttemptAt: state.lastAttemptAt,
+	lastSuccessAt: state.lastSuccessAt,
+	lastError: state.lastError,
+	installations: state.installations,
+	paired: state.installationToken != null,
+});
+
+let finiteSyncQueue = Promise.resolve<FiniteSyncState | undefined>(undefined);
+const runFiniteSync = (force = false) => {
+	finiteSyncQueue = finiteSyncQueue.catch(() => undefined).then(async () => {
+		const current = await loadFiniteSyncState();
+		if (current.installationToken == null) return current;
+		if (!force && current.lastAttemptAt != null && Date.now() - current.lastAttemptAt < 60_000) return current;
+		const synced = await syncFinite();
+		await syncRegisteredContentScript();
+		await notifyTabsOptionsUpdated();
+		return synced;
+	});
+	return finiteSyncQueue;
+};
+
+const finishSnooze = (
+	state: SnoozeState,
+	category: Exclude<UsageCategory, 'messages'>,
+	endedAt: number,
+	reason: CategorySnooze['endReason'],
+) => {
+	const snooze = state.active[category];
+	if (snooze == null) return false;
+	snooze.endedAt = Math.max(snooze.startedAt, endedAt);
+	snooze.endReason = reason;
+	state.history.push(snooze);
+	state.history = state.history.slice(-500);
+	delete state.active[category];
+	return true;
+};
+
+const normalizeSnoozes = async (state: SnoozeState, now: number) => {
+	const inactivityMs = await loadSnoozeInactivityMs();
+	let changed = false;
+	for (const category of ['algorithmic', 'intentional'] as const) {
+		const snooze = state.active[category];
+		if (snooze == null) continue;
+		if (snooze.requestedEndAt <= now) {
+			changed = finishSnooze(state, category, snooze.requestedEndAt, 'expired') || changed;
+		} else if (snooze.lastActiveAt + inactivityMs <= now) {
+			changed = finishSnooze(state, category, snooze.lastActiveAt + inactivityMs, 'inactive') || changed;
+		}
+	}
+	if (changed) await saveCategorySnoozes(state);
+	return changed;
+};
+
+const consolidatedCategoryMs = (
+	usage: UsageMetrics,
+	sync: FiniteSyncState,
+	date: string,
+	category: UsageCategory,
+) => {
+	const local = localCategoryTotal(usage, date, category).activeMs;
+	if (sync.installationToken == null || sync.consolidatedDailyTotals == null) return local;
+	const server = sync.consolidatedDailyTotals
+		.filter(total => total.date === date && total.category === category)
+		.reduce((sum, total) => sum + total.activeMs, 0);
+	const uploaded = sync.lastUploadedUsage == null
+		? 0
+		: localCategoryTotal(sync.lastUploadedUsage, date, category).activeMs;
+	return server + Math.max(0, local - uploaded);
+};
+
+const usageStatusFor = async (
+	category: UsageCategory,
+	usage?: UsageMetrics,
+	runtime?: UsageRuntimeState,
+	snoozes?: SnoozeState,
+): Promise<UsageStatus> => {
+	const now = Date.now();
+	const [currentUsage, currentRuntime, currentSnoozes, limits, sync] = await Promise.all([
+		usage ?? loadUsageMetrics(),
+		runtime ?? loadUsageRuntimeState(),
+		snoozes ?? loadCategorySnoozes(),
+		loadUsageLimits(),
+		loadFiniteSyncState(),
+	]);
+	await normalizeSnoozes(currentSnoozes, now);
+	const dailyMs = consolidatedCategoryMs(currentUsage, sync, dateKeyForTimestamp(now), category);
+	const limit = category === 'messages' || !limits[category].enabled ? null : limits[category].dailyMs;
+	const snooze = category === 'messages' ? undefined : currentSnoozes.active[category];
+	const snoozeUntil = snooze != null && snooze.requestedEndAt > now ? snooze.requestedEndAt : null;
+	return {
+		category,
+		sessionMs: activeSessionMs(currentRuntime, category),
+		dailyMs,
+		limitMs: limit,
+		remainingMs: limit == null ? null : Math.max(0, limit - dailyMs),
+		limitReached: limit != null && dailyMs >= limit && snoozeUntil == null,
+		snoozeUntil,
+		updatedAt: now,
+	};
 };
 
 const pathPatternMatches = (path: string, pattern: Path): boolean => {
@@ -156,14 +269,16 @@ const countBlock = () => {
 	return counterQueue;
 };
 
-let usageQueue = Promise.resolve();
-const trackUsage = (active: boolean, sender: MessageSender) => {
+let usageQueue: Promise<UsageStatus | undefined> = Promise.resolve(undefined);
+const trackUsage = (active: boolean, category: UsageCategory, sender: MessageSender) => {
 	usageQueue = usageQueue.catch(() => undefined).then(async () => {
 		const now = Date.now();
-		const [usage, runtime] = await Promise.all([
+		const [usage, runtime, snoozes] = await Promise.all([
 			loadUsageMetrics(),
 			loadUsageRuntimeState(),
+			loadCategorySnoozes(),
 		]);
+		await normalizeSnoozes(snoozes, now);
 
 		let siteId: SiteId | undefined;
 		if (active && sender.tab.incognito !== true) {
@@ -177,23 +292,51 @@ const trackUsage = (active: boolean, sender: MessageSender) => {
 			}
 		}
 
-		recordUsageActivity(usage, runtime, sender.tab.id, siteId, active && siteId != null, now);
+		const previousActive = runtime.active == null ? undefined : { ...runtime.active };
+		const currentSnooze = category === 'messages' ? undefined : snoozes.active[category];
+		const isSnoozing = currentSnooze != null && currentSnooze.requestedEndAt > now;
+		const duration = recordUsageActivity(
+			usage,
+			runtime,
+			sender.tab.id,
+			siteId,
+			siteId == null ? undefined : category,
+			active && siteId != null,
+			isSnoozing,
+			now,
+		);
+		if (previousActive?.snoozed && previousActive.category !== 'messages') {
+			const snooze = snoozes.active[previousActive.category];
+			if (snooze != null) snooze.activeMs += duration;
+		}
+		if (active && siteId != null && currentSnooze != null) currentSnooze.lastActiveAt = now;
 		pruneUsageMetrics(usage, now);
+
+		let status = await usageStatusFor(category, usage, runtime, snoozes);
+		if (siteId != null && status.limitReached) {
+			if (incrementLimitReached(usage, runtime, dateKeyForTimestamp(now), siteId, category)) {
+				status = await usageStatusFor(category, usage, runtime, snoozes);
+			}
+		}
 		await Promise.all([
 			saveUsageMetrics(usage),
 			saveUsageRuntimeState(runtime),
+			saveCategorySnoozes(snoozes),
 		]);
+		runFiniteSync().catch(() => undefined);
+		return status;
 	});
 	return usageQueue;
 };
 
 const handleMessage = async (msg: ToServiceWorkerMessage, sender: MessageSender) => {
 	if (msg.type === 'requestSiteDetails') {
-		const [siteList, snoozeUntil, enabledSiteIds] = await Promise.all([
+		const [siteList, enabledSiteIds, snoozes] = await Promise.all([
 			loadSitelist(),
-			loadSnoozeUntil(),
 			loadEnabledSites(),
+			loadCategorySnoozes(),
 		]);
+		await normalizeSnoozes(snoozes, Date.now());
 
 		const enabled = new Set(enabledSiteIds);
 		const url = new URL(sender.url);
@@ -201,12 +344,16 @@ const handleMessage = async (msg: ToServiceWorkerMessage, sender: MessageSender)
 		if (sites.length === 0) return;
 
 		const siteOptions = await Promise.all(sites.map(site => loadRegionsForSite(site.id)));
-		const isSnoozing = snoozeUntil != null && snoozeUntil > Date.now();
+		const categorySnooze = msg.category === 'messages' ? undefined : snoozes.active[msg.category];
+		const isSnoozing = categorySnooze != null && categorySnooze.requestedEndAt > Date.now();
 		const regionsBySite = sites.map((site, siteIndex) => {
 			const options = siteOptions[siteIndex]!;
 			return site.regions.map((region): DesiredRegionState => {
 				const style = cssForType(region.type);
-				if (isSnoozing || !isEnabledPath(site, region, msg.path)) {
+				const regionCategory = region.category ?? msg.category;
+				const regionSnooze = regionCategory === 'messages' ? undefined : snoozes.active[regionCategory];
+				const regionIsSnoozing = regionSnooze != null && regionSnooze.requestedEndAt > Date.now();
+				if (regionIsSnoozing || !isEnabledPath(site, region, msg.path)) {
 					return { config: region, css: null, style, enabled: false };
 				}
 
@@ -236,7 +383,7 @@ const handleMessage = async (msg: ToServiceWorkerMessage, sender: MessageSender)
 			type: 'nfe#siteDetails',
 			regions: regionsBySite.flat(),
 			token: msg.token,
-			snoozeUntil: snoozeUntil ?? null,
+			usage: await usageStatusFor(msg.category, undefined, undefined, snoozes),
 			firstLoadRedirect,
 			siteId: primarySite.id,
 			theme: {
@@ -250,12 +397,14 @@ const handleMessage = async (msg: ToServiceWorkerMessage, sender: MessageSender)
 	if (msg.type === 'enableSite') {
 		const result = await enableSite(msg.siteId);
 		await notifyTabsOptionsUpdated();
+		runFiniteSync().catch(() => undefined);
 		return result;
 	}
 
 	if (msg.type === 'disableSite') {
 		await disableSite(msg.siteId);
 		await notifyTabsOptionsUpdated();
+		runFiniteSync().catch(() => undefined);
 		return;
 	}
 
@@ -272,24 +421,81 @@ const handleMessage = async (msg: ToServiceWorkerMessage, sender: MessageSender)
 	}
 
 	if (msg.type === 'trackUsageActivity') {
-		return trackUsage(msg.active, sender);
+		return trackUsage(msg.active, msg.category, sender);
 	}
 
 	if (msg.type === 'notifyOptionsUpdated') {
+		runFiniteSync().catch(() => undefined);
 		return notifyTabsOptionsUpdated();
 	}
 
 	if (msg.type === 'snooze') {
-		await saveSnoozeUntil(msg.until);
-		return notifyTabsOptionsUpdated();
+		const now = Date.now();
+		const snoozes = await loadCategorySnoozes();
+		await normalizeSnoozes(snoozes, now);
+		const existing = snoozes.active[msg.category];
+		if (msg.until <= now) {
+			if (existing != null) finishSnooze(snoozes, msg.category, now, 'cancelled');
+		} else {
+			if (existing != null) finishSnooze(snoozes, msg.category, now, 'extended');
+			snoozes.active[msg.category] = {
+				id: crypto.randomUUID(),
+				category: msg.category,
+				sourceSiteId: msg.sourceSiteId,
+				sourceSurfaceId: msg.sourceSurfaceId,
+				triggerContext: msg.triggerContext,
+				startedAt: now,
+				requestedEndAt: msg.until,
+				lastActiveAt: now,
+				activeMs: 0,
+			};
+		}
+		await saveCategorySnoozes(snoozes);
+		runFiniteSync(true).catch(() => undefined);
+		await notifyTabsOptionsUpdated();
+		return usageStatusFor(msg.category, undefined, undefined, snoozes);
 	}
 
 	if (msg.type === 'readSnooze') {
-		return await loadSnoozeUntil() ?? null;
+		const snoozes = await loadCategorySnoozes();
+		await normalizeSnoozes(snoozes, Date.now());
+		return snoozes;
 	}
 
 	if (msg.type === 'setSiteTheme') {
-		return setSiteTheme(msg.siteId, msg.theme);
+		await setSiteTheme(msg.siteId, msg.theme);
+		runFiniteSync().catch(() => undefined);
+		return;
+	}
+
+	if (msg.type === 'saveUsageLimits') {
+		await saveUsageLimits(msg.limits);
+		runFiniteSync().catch(() => undefined);
+		return notifyTabsOptionsUpdated();
+	}
+
+	if (msg.type === 'readUsageLimits') {
+		return loadUsageLimits();
+	}
+
+	if (msg.type === 'pairFiniteSync') {
+		const paired = await pairFinite(msg.pairingCode, msg.deviceName);
+		await syncRegisteredContentScript();
+		await notifyTabsOptionsUpdated();
+		runFiniteSync(true).catch(() => undefined);
+		return syncView(paired);
+	}
+
+	if (msg.type === 'readFiniteSync') {
+		return syncView(await loadFiniteSyncState());
+	}
+
+	if (msg.type === 'syncFiniteNow') {
+		return syncView((await runFiniteSync(true)) ?? await loadFiniteSyncState());
+	}
+
+	if (msg.type === 'disconnectFiniteSync') {
+		return syncView(await disconnectFinite());
 	}
 };
 

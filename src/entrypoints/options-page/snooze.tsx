@@ -2,13 +2,17 @@ import { createMemo, createSignal, Show, type ParentComponent } from "solid-js";
 import { displayDuration } from "../../lib/time";
 import { useOptionsPageState } from "./state";
 import { DAY, HOUR, MINUTE } from "/lib/time";
+import type { UsageCategory } from "/storage/schema";
+import { categoryTitle } from "/usage/categories";
 
 type SnoozePendingInfo = {
 	secondsEarned: number;
 	pendingProgress: number;
 }
 
-export const HoldSnoozeButton = () => {
+type LimitedCategory = Exclude<UsageCategory, 'messages'>;
+
+export const HoldSnoozeButton = ({ category }: { category: LimitedCategory }) => {
 	const state = useOptionsPageState();
 
 	const [buttonHeldSince, setButtonHeldSince] = createSignal<number | null>(null);
@@ -44,7 +48,7 @@ export const HoldSnoozeButton = () => {
 		if (e.button !== 0) return;
 		const { secondsEarned } = snoozePendingInfo() ?? {};
 		if (secondsEarned != null && secondsEarned > 0) {
-			await state.startSnooze(1000 * secondsEarned);
+			await state.startSnooze(category, 1000 * secondsEarned);
 		}
 		setButtonHeldSince(null);
 	};
@@ -71,45 +75,48 @@ export const HoldSnoozeButton = () => {
 	</button>
 }
 
-const InstantSnoozeButton: ParentComponent<{ ms: number, primary?: boolean }> = ({ms, primary, children}) => {
+const InstantSnoozeButton: ParentComponent<{ category: LimitedCategory, ms: number, primary?: boolean }> = ({category, ms, primary, children}) => {
 	const state = useOptionsPageState();
 
 	const onClick = async () => {
-		await state.startSnooze(ms);
+		await state.startSnooze(category, ms);
 	}
 
 	return <button class={`${primary ? 'primary' : 'tertiary'} font-lg p-4`} onClick={onClick}>{children}</button>
 }
 
-const InstantSnoozeButtons = () => {
+const InstantSnoozeButtons = ({ category }: { category: LimitedCategory }) => {
 		return <div class="flex gap-2 cross-center card outlined shadow p-4 snooze-strip">
 			<div class="text-secondary">Snooze for</div>
-			<InstantSnoozeButton ms={MINUTE}>1m</InstantSnoozeButton>
-			<InstantSnoozeButton ms={2 * MINUTE}>2m</InstantSnoozeButton>
-			<InstantSnoozeButton ms={5 * MINUTE}>5m</InstantSnoozeButton>
-			<InstantSnoozeButton primary ms={10 * MINUTE}>10m</InstantSnoozeButton>
-			<InstantSnoozeButton ms={30 * MINUTE}>30m</InstantSnoozeButton>
-			<InstantSnoozeButton ms={HOUR}>1h</InstantSnoozeButton>
-			<InstantSnoozeButton ms={DAY}>24h</InstantSnoozeButton>
+			<InstantSnoozeButton category={category} ms={MINUTE}>1m</InstantSnoozeButton>
+			<InstantSnoozeButton category={category} ms={2 * MINUTE}>2m</InstantSnoozeButton>
+			<InstantSnoozeButton category={category} ms={5 * MINUTE}>5m</InstantSnoozeButton>
+			<InstantSnoozeButton category={category} primary ms={10 * MINUTE}>10m</InstantSnoozeButton>
+			<InstantSnoozeButton category={category} ms={30 * MINUTE}>30m</InstantSnoozeButton>
+			<InstantSnoozeButton category={category} ms={HOUR}>1h</InstantSnoozeButton>
+			<InstantSnoozeButton category={category} ms={DAY}>24h</InstantSnoozeButton>
 		</div>
 }
 
-export const Snooze = () => {
+const CategorySnooze = ({ category }: { category: LimitedCategory }) => {
 	const state = useOptionsPageState();
 
 	const isSnoozing = () => {
-		const snoozeState = state.snoozeState.get();
-		return snoozeState != null && snoozeState > state.clock.get();
+		return state.snoozeRemaining(category) > 0;
 	}
 
-	return <div>
+	return <div class="category-snooze">
+		<div class="category-snooze-heading">
+			<strong>{categoryTitle(category)}</strong>
+			<span>{category === 'algorithmic' ? 'Feeds, recommendations, explore, and short-form video.' : 'Following, subscriptions, searches, and direct visits.'}</span>
+		</div>
 		<Show when={!isSnoozing()}>
 			<div class="flex axis-center">
 				<Show when={state.snoozeMode.get() === 'hold'}>
-					<HoldSnoozeButton />
+					<HoldSnoozeButton category={category} />
 				</Show>
 				<Show when={state.snoozeMode.get() === 'instant'}>
-					<InstantSnoozeButtons />
+					<InstantSnoozeButtons category={category} />
 				</Show>
 			</div>
 		</Show>
@@ -117,12 +124,17 @@ export const Snooze = () => {
 		<Show when={isSnoozing()}>
 			<div class="flex cross-center p-4 card secondary outlined shadow">
 				<div class="flex-1">
-					💤 Snoozing for {displayDuration((state.snoozeState.get()! - state.clock.get()))}. Scroll your life away!
+					Snoozed for {displayDuration(state.snoozeRemaining(category))}. It will end after five inactive minutes.
 				</div>
-				<button class="secondary" onClick={() => state.cancelSnooze()}>
+				<button class="secondary" onClick={() => state.cancelSnooze(category)}>
 					Cancel snooze
 				</button>
 			</div>
 		</Show>
 	</div>
 }
+
+export const Snooze = () => <div class="category-snooze-list">
+	<CategorySnooze category="algorithmic" />
+	<CategorySnooze category="intentional" />
+</div>;
