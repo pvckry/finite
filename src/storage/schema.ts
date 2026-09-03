@@ -4,11 +4,6 @@ export const CURRENT_STORAGE_SCHEMA_VERSION = 3;
 
 export type SnoozeMode = 'instant' | 'hold';
 
-export type DailyBlockerCounter = {
-	date: string;
-	count: number;
-};
-
 export type UsageCategory = 'algorithmic' | 'intentional' | 'messages';
 
 export const USAGE_CATEGORIES: UsageCategory[] = ['algorithmic', 'intentional', 'messages'];
@@ -138,7 +133,6 @@ export type StorageLocalV3 = {
 	usageLimits?: UsageLimits;
 	snoozeInactivityMs?: number;
 	categorySnoozes?: SnoozeState;
-	dailyBlockerCounter?: DailyBlockerCounter;
 	usageMetrics?: UsageMetrics;
 	finiteSync?: FiniteSyncState;
 };
@@ -170,7 +164,6 @@ export type StorageLocalV2 = {
 	enabledSites?: SiteId[];
 	siteConfig?: Record<SiteId, SiteConfig>;
 	snoozeUntil?: number;
-	dailyBlockerCounter?: DailyBlockerCounter;
 	usageMetrics?: {
 		version: 1;
 		days: Record<string, {

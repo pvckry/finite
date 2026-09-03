@@ -7,13 +7,11 @@ import type { SiteId } from '/types/sitelist';
 export const BlockerPanel = ({
 	siteId,
 	theme,
-	dailyCount,
 	usage,
 	category,
 }: {
 	siteId: Accessor<SiteId | null>;
 	theme: Accessor<Theme | null>;
-	dailyCount: Accessor<number | null>;
 	usage: Accessor<UsageStatus | null>;
 	category: Accessor<Exclude<UsageCategory, 'messages'>>;
 }) => {
@@ -26,12 +24,6 @@ export const BlockerPanel = ({
 			siteId: id,
 			theme: theme() === 'dark' ? 'light' : 'dark',
 		});
-	};
-
-	const countText = () => {
-		const count = dailyCount();
-		if (count == null) return 'Updating today’s blocker count…';
-		return `Blocked ${count} ${count === 1 ? 'time' : 'times'} today`;
 	};
 
 	const snooze = () => {
@@ -55,7 +47,6 @@ export const BlockerPanel = ({
 					<h2 class="blocker-title">Feed blocked</h2>
 				</div>
 			</div>
-			<div class="blocker-count">{countText()}</div>
 			<div class="blocker-actions">
 				<button class="primary blocker-primary" onClick={() => sendToServiceWorker({ type: 'closeCurrentTab' })}>Close tab</button>
 				<button class="secondary" onClick={snooze}>Snooze 5m</button>

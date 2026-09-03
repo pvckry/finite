@@ -52,7 +52,6 @@ type ContentScriptState = {
 	siteId: SignalObj<SiteId | null>;
 	category: SignalObj<UsageCategory>;
 	usage: SignalObj<UsageStatus | null>;
-	dailyBlockCount: SignalObj<number | null>;
 	overlays: OverlayState[];
 	theme: {
 		css: string | null;
@@ -67,7 +66,6 @@ const state: ContentScriptState = {
 	siteId: signalObj<SiteId | null>(null),
 	category: signalObj<UsageCategory>('intentional'),
 	usage: signalObj<UsageStatus | null>(null),
-	dailyBlockCount: signalObj<number | null>(null),
 	theme: {
 		css: null,
 		id: signalObj<Theme | null>(null),
@@ -146,21 +144,6 @@ const setupUsageTracking = () => {
 		if (isUsageActive()) reportUsageActivity();
 	}, USAGE_HEARTBEAT_MS);
 	reportUsageActivity();
-};
-
-const countedBlockKeys = new Set<string>();
-
-const recordBlockOnce = () => {
-	const key = `${state.siteId.get() ?? 'unknown'}:${window.location.pathname}`;
-	if (countedBlockKeys.has(key)) return;
-	countedBlockKeys.add(key);
-
-	sendMessage({ type: 'recordBlock' })
-		.then(count => {
-			if (typeof count === 'number') state.dailyBlockCount.set(count);
-			else countedBlockKeys.delete(key);
-		})
-		.catch(() => countedBlockKeys.delete(key));
 };
 
 const createOverlay = (refEl: Element, el: Element, position: 'fixed' | 'absolute', zIndex: number) => {
@@ -244,7 +227,6 @@ const tryInject = () => {
 
 		const referenceStillExists = region.overlay == null || document.contains(region.overlay.referenceElement);
 		if (region.injectedElement != null && document.contains(region.injectedElement) && referenceStillExists) {
-			recordBlockOnce();
 			continue;
 		}
 
@@ -309,14 +291,12 @@ const tryInject = () => {
 				<BlockerPanel
 					siteId={state.siteId.get}
 					theme={state.theme.id.get}
-					dailyCount={state.dailyBlockCount.get}
 					usage={state.usage.get}
 					category={() => region.config.category ?? currentLimitedCategory()}
 				/>
 			), container);
 
 			region.injectedElement = nfeElement;
-			recordBlockOnce();
 			break;
 		}
 	}
@@ -790,7 +770,6 @@ const patchState = (regions: DesiredRegionState[]) => {
 
 		if (region.injectedElement != null) {
 			region.injectedElement.style.display = isRegionBlockActive(region) ? 'block' : 'none';
-			if (isRegionBlockActive(region)) recordBlockOnce();
 		}
 
 		if (region.css != null && isRegionBlockActive(region)) css += `${region.css}\n`;

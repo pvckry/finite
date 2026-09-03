@@ -34,6 +34,8 @@ const ensureMigrated = async (): Promise<void> => {
 		browser.storage.sync.get(null) as Promise<StorageSyncV1 | undefined>,
 		browser.storage.local.get(null) as Promise<(StorageLocalV2 | StorageLocalV3) | undefined>,
 	]);
+	// Remove the obsolete pre-metrics blocker counter from existing profiles.
+	await browser.storage.local.remove('dailyBlockerCounter');
 
 	if (storageLocal?.version === CURRENT_STORAGE_SCHEMA_VERSION) {
 		return;
@@ -72,7 +74,6 @@ const ensureMigrated = async (): Promise<void> => {
 		usageLimits: DEFAULT_USAGE_LIMITS,
 		snoozeInactivityMs: DEFAULT_SNOOZE_INACTIVITY_MS,
 		categorySnoozes,
-		dailyBlockerCounter: storageLocal?.dailyBlockerCounter,
 		usageMetrics: migrateLegacyUsage(storageLocal?.usageMetrics),
 	};
 
@@ -140,23 +141,6 @@ export const activeSnoozeFor = async (category: UsageCategory, now = Date.now())
 };
 
 export const localDateKey = (date = new Date()) => dateKeyForTimestamp(date.getTime());
-
-export const loadDailyBlockerCount = async () => {
-	const today = localDateKey();
-	const counter = await getKey('dailyBlockerCounter', { date: today, count: 0 });
-	return counter.date === today ? counter.count : 0;
-}
-
-export const recordDailyBlock = async () => {
-	const today = localDateKey();
-	const current = await getKey('dailyBlockerCounter', { date: today, count: 0 });
-	const next = {
-		date: today,
-		count: current.date === today ? current.count + 1 : 1,
-	};
-	await setKey('dailyBlockerCounter', next);
-	return next.count;
-}
 
 export const loadSiteConfig = async (siteId: SiteId): Promise<SiteConfig | undefined> => {
 	const sites = await getKey('siteConfig', {});

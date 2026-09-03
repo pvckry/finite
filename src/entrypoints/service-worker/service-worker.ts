@@ -12,7 +12,6 @@ import {
 	loadUsageMetrics,
 	loadUsageRuntimeState,
 	migrationPromise,
-	recordDailyBlock,
 	saveCategorySnoozes,
 	saveSiteEnabled,
 	saveThemeForSite,
@@ -263,12 +262,6 @@ const setSiteTheme = async (siteId: SiteId, theme: Theme | null) => {
 	await notifyTabsOptionsUpdated();
 };
 
-let counterQueue = Promise.resolve(0);
-const countBlock = () => {
-	counterQueue = counterQueue.then(recordDailyBlock);
-	return counterQueue;
-};
-
 let usageQueue: Promise<UsageStatus | undefined> = Promise.resolve(undefined);
 const trackUsage = (active: boolean, category: UsageCategory, sender: MessageSender) => {
 	usageQueue = usageQueue.catch(() => undefined).then(async () => {
@@ -414,10 +407,6 @@ const handleMessage = async (msg: ToServiceWorkerMessage, sender: MessageSender)
 
 	if (msg.type === 'closeCurrentTab') {
 		return browser.tabs.remove(sender.tab.id);
-	}
-
-	if (msg.type === 'recordBlock') {
-		return countBlock();
 	}
 
 	if (msg.type === 'trackUsageActivity') {

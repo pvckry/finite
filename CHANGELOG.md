@@ -2,7 +2,8 @@
 
 ## [Unreleased]
 
-- No unreleased changes
+- Remove the obsolete Chrome-only daily blocker counter now that category-aware usage metrics are available.
+- Clarify the optional private browser-sync boundary in the privacy documentation.
 
 ## [3.0.5] - 2026-07-16
 

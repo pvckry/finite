@@ -426,16 +426,6 @@ nfe-tabs [role="tab"][aria-selected="false"] { z-index: 0; }
 	letter-spacing: -0.025em;
 }
 
-.blocker-count {
-	margin-top: 16px;
-	padding: 10px 12px;
-	border: 1px solid var(--theme-border);
-	border-radius: 11px;
-	color: var(--theme-text-secondary);
-	background: var(--theme-figure-100);
-	font-size: 14px;
-}
-
 .blocker-actions {
 	display: flex;
 	flex-wrap: wrap;
