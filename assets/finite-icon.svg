@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title id="title">Finite</title>
+  <defs>
+    <linearGradient id="background" x1="18" y1="14" x2="110" y2="116" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6AA6FF"/>
+      <stop offset="1" stop-color="#2764E7"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#background)"/>
+  <path fill="#FFFFFF" d="M36 27h61v17H55v15h36v17H55v31H36V27Z"/>
+</svg>
