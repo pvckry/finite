@@ -1,24 +1,26 @@
 :root {
 	--theme-text-primary: black;
-	--theme-text-secondary: #888;
-	--theme-ground: rgba(215, 215, 205, 1);
-	--theme-widget-ground: rgba(255, 255, 255, 0.8);
+	--theme-text-secondary: #697386;
+	--theme-ground: #f4f6fb;
+	--theme-widget-ground: rgba(255, 255, 255, 0.94);
 	--theme-figure-100: rgba(0, 0, 0, 0.05);
-	--theme-figure: rgba(0, 0, 0);
-	--theme-figure-500: rgba(100, 100, 100);
-	--theme-border: rgba(0, 0, 0, 0.1);
-	--theme-accent: rgb(204, 119, 68);
-	--theme-accent-a200: rgba(204, 119, 68, 0.2);
-	--theme-accent-a500: rgba(204, 119, 68, 0.5);
+	--theme-figure: #171a24;
+	--theme-figure-500: #697386;
+	--theme-border: rgba(30, 36, 50, 0.1);
+	--theme-accent: #635bff;
+	--theme-accent-hover: #5148f5;
+	--theme-accent-a200: rgba(99, 91, 255, 0.16);
+	--theme-accent-a500: rgba(99, 91, 255, 0.5);
 	--theme-accent-figure: rgb(255, 255, 255);
+	--theme-gradient: linear-gradient(135deg, #635bff, #8d5cf6);
 
 	--theme-lighten-100: rgba(255, 255, 255, 0.2);
 	--theme-darken-100: rgba(0, 0, 0, 0.05);
 	--theme-darken-50: rgba(0, 0, 0, 0.025);
 
-	--theme-active-tab-bg: rgb(225, 225, 215);
+	--theme-active-tab-bg: #ffffff;
 
-	--theme-shadow: 0 0 8px rgba(0, 0, 0, 0.15);
+	--theme-shadow: 0 22px 64px rgba(43, 49, 66, 0.12);
 
 	--theme-default-hover-bg: var(--theme-lighten-100);
 	--theme-default-selected-bg: var(--theme-accent-a200);

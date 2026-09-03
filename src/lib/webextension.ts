@@ -25,6 +25,7 @@ type WebExtensionAPI = {
 		onUpdated: WebExtensionEvent<TabId>;
 		sendMessage: (tabId: TabId, message: any) => Promise<void>;
 		query: (queryInfo: QueryInfo) => Promise<Tab[]>;
+		remove: (tabId: TabId) => Promise<void>;
 	};
 	scripting: {
 		executeScript: (opts: ExecuteOptions) => Promise<any>;

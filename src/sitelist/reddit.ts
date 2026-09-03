@@ -48,7 +48,6 @@ const site: Site = {
 			title: 'Left navigation sidebar',
 			selectors: ['reddit-sidebar-nav'],
 			type: 'hide',
-			default: false,
 			paths: '*',
 		},
 		{
@@ -56,7 +55,6 @@ const site: Site = {
 			title: 'Right sidebar',
 			selectors: ['div.side', '#right-sidebar-contents'],
 			type: 'hide',
-			default: false,
 			paths: '*',
 		},
 		{

@@ -1,4 +1,4 @@
-.PHONY: all clean install dev package-source
+.PHONY: build clean install dev
 
 # The current git tag is used as the version number
 GITTAG=$(shell git describe --always --tag)
@@ -7,12 +7,7 @@ build: install
 	rm -rf build
 	bun run src/dev/build.ts
 	mkdir -p dist
-	(cd build && zip -r ../dist/NewsFeedEradicator_$(GITTAG).zip .)
-
-# Firefox Add-on store requires source to be submitted as a zip, so this command builds that zip
-package-source:
-	mkdir -p dist
-	git archive --output=dist/NewsFeedEradicator_source_$(GITTAG).zip HEAD
+	(cd build && zip -r ../dist/Finite_$(GITTAG).zip .)
 
 dev: install
 	bun run src/dev/build.ts --watch

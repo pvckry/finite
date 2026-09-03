@@ -1,7 +1,7 @@
 #nfe-container {
-	font-size: 18px;
+	font-size: 16px;
 	pointer-events: all;
 	padding: 16px;
 	overflow: hidden;
-	font-family: sans-serif;
+	font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }

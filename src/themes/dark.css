@@ -1,24 +1,26 @@
 :root {
 	--theme-text-primary: white;
-	--theme-text-secondary: #aaa;
-	--theme-ground: rgba(20, 19, 15, 1);
-	--theme-widget-ground: rgba(0, 0, 0, 0.8);
-	--theme-figure-100: rgba(255, 255, 255, 0.1);
+	--theme-text-secondary: #9ca6b8;
+	--theme-ground: #0b0d12;
+	--theme-widget-ground: rgba(17, 21, 31, 0.94);
+	--theme-figure-100: rgba(255, 255, 255, 0.06);
 	--theme-figure: rgba(255, 255, 255);
-	--theme-figure-500: rgba(130, 130, 130);
-	--theme-border: rgba(255, 255, 255, 0.15);
-	--theme-accent: rgb(204, 119, 68);
-	--theme-accent-a200: rgba(204, 119, 68, 0.2);
-	--theme-accent-a500: rgba(204, 119, 68, 0.5);
+	--theme-figure-500: #7d8799;
+	--theme-border: rgba(255, 255, 255, 0.1);
+	--theme-accent: #9588ff;
+	--theme-accent-hover: #a79cff;
+	--theme-accent-a200: rgba(149, 136, 255, 0.2);
+	--theme-accent-a500: rgba(149, 136, 255, 0.55);
 	--theme-accent-figure: rgb(255, 255, 255);
+	--theme-gradient: linear-gradient(135deg, #6f63ff, #9c6cff);
 
 	--theme-lighten-100: rgba(255, 255, 255, 0.05);
 	--theme-darken-100: rgba(0, 0, 0, 0.1);
 	--theme-darken-50: rgba(0, 0, 0, 0.01);
 
-	--theme-active-tab-bg: rgb(25, 24, 20);
+	--theme-active-tab-bg: #11151f;
 
-	--theme-shadow: 0 0 8px rgba(255, 255, 200, 0.025);
+	--theme-shadow: 0 22px 64px rgba(0, 0, 0, 0.34);
 
 	--theme-default-hover-bg: var(--theme-lighten-100);
 	--theme-default-selected-bg: var(--theme-accent-a200);

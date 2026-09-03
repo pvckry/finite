@@ -27,7 +27,6 @@ export const site: Site = {
 			id: regionId('groups-feed'),
 			title: 'Groups feed',
 			type: 'remove',
-			default: false,
 			paths: ['/groups/feed/'],
 			selectors: ['div[role="feed"]'],
 			inject: {

@@ -18,15 +18,18 @@ export const SiteConfigPanel = ({ site } : { site: Accessor<Site | null> }) => {
 		return r.regionEnabledOverride[regionId] ?? defaultValue;
 	}
 
-	return <div class="space-y-2 py-4">
-		<div class="px-4 flex space-x-2 cross-end">
-			<h3 class="font-lg flex-1 text-figure-500 font-bold">{expect(site()).title}</h3>
+	return <div class="site-config space-y-4 py-4">
+		<div class="px-4 flex space-x-2 cross-end site-config-header">
+			<div class="flex-1 space-y-1">
+				<div class="options-kicker">Fine-tune blocker</div>
+				<h3 class="font-xl font-bold">{expect(site()).title}</h3>
+			</div>
 			<a class="font-sm hover:underline" target="_blank" href={`https://${expect(site()?.hosts[0])}`}>Visit site</a>
 		</div>
 		<div class="px-4">
-			<h4 class="font flex-1 text-figure-500 font-bold">Hide regions:</h4>
+			<p class="text-secondary font-sm">Toggle individual distractions without disabling the whole site.</p>
 		</div>
-		<ul>
+		<ul class="region-list">
 			<For each={expect(site()).regions}>
 				{region => <li>
 					<RegionToggleButton siteId={expect(site()).id} regionId={region.id} refetch={refetch} value={() => isRegionActive(region.id)} label={region.title} />

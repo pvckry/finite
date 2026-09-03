@@ -1,11 +1,19 @@
 {
-  "name": "news-feed-eradicator",
-  "title": "News Feed Eradicator",
+  "name": "finite",
+  "title": "Finite",
   "id": "jid1-oWTXWc3MRzRuiQ",
-  "description": "Eradicate distractions and take back control of your browsing",
-  "author": "Jordan West",
+  "description": "Make infinite feeds finite and browse with intention",
+  "author": "pvckry",
   "license": "AGPL-3.0-only",
   "version": "3.0.5",
+  "homepage": "https://github.com/pvckry/finite",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pvckry/finite.git"
+  },
+  "bugs": {
+    "url": "https://github.com/pvckry/finite/issues"
+  },
   "type": "module",
   "module": "index.ts",
   "devDependencies": {
@@ -15,8 +23,6 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "@types/papaparse": "^5.5.2",
-    "papaparse": "^5.5.3",
     "solid-js": "^1.9.10",
     "vite": "^7.2.6",
     "vite-plugin-solid": "^2.11.10"

@@ -1,236 +1,247 @@
 import { getBrowser, type MessageSender, type TabId } from '/lib/webextension';
 import type { Path, PathList, Region, Site, SiteId } from '/types/sitelist';
-import type { DesiredRegionState, RequestQuoteResponse, FromServiceWorkerMessage, ToServiceWorkerMessage } from '/messaging/messages';
-import { loadHideQuotes, loadQuoteLists, loadRegionHideStyle, loadRegionsForSite, loadSitelist, loadSnoozeUntil, loadWidgetStyle, migrationPromise, saveQuoteEnabled, saveSiteEnabled, saveSnoozeUntil, saveThemeForSite } from '/storage/storage';
+import type { DesiredRegionState, FromServiceWorkerMessage, ToServiceWorkerMessage } from '/messaging/messages';
+import {
+	loadEnabledSites,
+	loadRegionsForSite,
+	loadSitelist,
+	loadSnoozeUntil,
+	migrationPromise,
+	recordDailyBlock,
+	saveSiteEnabled,
+	saveSnoozeUntil,
+	saveThemeForSite,
+} from '/storage/storage';
 import { originsForSite } from '/lib/util';
-import { BuiltinQuotes, type Quote } from '/quote';
-import type { QuoteListId, StorageLocalV2, Theme } from '/storage/schema';
+import type { Theme } from '/storage/schema';
 import themeDark from '/themes/dark.css?raw';
 import themeLight from '/themes/light.css?raw';
 
 const browser = getBrowser();
+const CONTENT_SCRIPT_ID = 'nfe-enabled-sites';
+
 browser.action.onClicked.addListener(() => {
 	browser.runtime.openOptionsPage();
 });
 
 const sendMessage = (tabId: TabId, message: FromServiceWorkerMessage) => browser.tabs.sendMessage(tabId, message);
 
+let registrationSync = Promise.resolve();
+
+const syncRegisteredContentScript = () => {
+	registrationSync = registrationSync.then(async () => {
+		const [siteList, enabledSiteIds, registeredScripts] = await Promise.all([
+			loadSitelist(),
+			loadEnabledSites(),
+			browser.scripting.getRegisteredContentScripts(),
+		]);
+
+		const enabled = new Set(enabledSiteIds);
+		const matches = Array.from(new Set(
+			siteList.sites
+				.filter(site => enabled.has(site.id))
+				.flatMap(originsForSite)
+		)).sort();
+		const registeredScript = registeredScripts.length === 1 ? registeredScripts[0] : undefined;
+		const registeredMatches = registeredScript != null
+			? [...registeredScript.matches].sort()
+			: [];
+		const registrationIsCurrent = registeredScript != null
+			&& registeredScript.id === CONTENT_SCRIPT_ID
+			&& registeredMatches.length === matches.length
+			&& registeredMatches.every((match, index) => match === matches[index]);
+
+		if (registrationIsCurrent) return;
+
+		if (registeredScripts.length > 0) {
+			await browser.scripting.unregisterContentScripts({ ids: registeredScripts.map(script => script.id) });
+		}
+
+		if (matches.length === 0) return;
+
+		await browser.scripting.registerContentScripts([{
+			id: CONTENT_SCRIPT_ID,
+			js: ['/entrypoints/intercept/intercept.js'],
+			runAt: 'document_start',
+			matches,
+			allFrames: false,
+		}]);
+	});
+
+	return registrationSync;
+};
+
 browser.runtime.onInstalled.addListener(async (details) => {
 	await migrationPromise;
-	const sync = await browser.storage.sync.get(null);
-	const local = await browser.storage.local.get(null);
-
-	console.log('Extension installed. Storage sync:', sync, 'local', local);
-
-	for (const siteId of local.enabledSites ?? []) {
-		await enableSite(siteId);
-	}
+	await syncRegisteredContentScript();
 
 	if (details.reason === 'install') {
 		browser.runtime.openOptionsPage();
 	}
 });
 
-const notifyTabsOptionsUpdated = async () => {
-	// This will only return tabs which we have permission to access, so we can message
-	// every relevant tab that's running the content script
-	const tabs = await browser.tabs.query({url: '*://*/*'});
+// Keep registrations correct after an unpacked-extension reload as well as install/update events.
+migrationPromise.then(syncRegisteredContentScript);
 
-	try {
-		await Promise.allSettled(
-			tabs.map(tab => {
-				return sendMessage(tab.id, { type: 'nfe#optionsUpdated' })
-			})
-		);
-	} catch (e) {
-		// Ignore inevitable errors due to not having permissions for irrelevant tabs
-	}
-}
+const notifyTabsOptionsUpdated = async () => {
+	const tabs = await browser.tabs.query({ url: '*://*/*' });
+
+	await Promise.allSettled(
+		tabs.map(tab => sendMessage(tab.id, { type: 'nfe#optionsUpdated' }))
+	);
+};
 
 const pathPatternMatches = (path: string, pattern: Path): boolean => {
 	if (typeof pattern === 'string') {
 		return pattern === path;
-	} else if ('regexp' in pattern) {
-		return new RegExp(pattern.regexp).test(path);
 	}
-	return false;
-}
+	return new RegExp(pattern.regexp).test(path);
+};
 
 const pathInPathList = (path: string, pathlist: PathList): boolean => {
-	return pathlist.find(pattern => pathPatternMatches(path, pattern)) != null;
-}
+	return pathlist.some(pattern => pathPatternMatches(path, pattern));
+};
 
-const isEnabledPath = (site: Site, region: Region, path: string): boolean | undefined => {
-	if (region.paths === '*') {
-		return true;
-	}
-
-	if (region.paths === 'inherit') {
-		return pathInPathList(path, site.paths);
-	}
-
+const isEnabledPath = (site: Site, region: Region, path: string): boolean => {
+	if (region.paths === '*') return true;
+	if (region.paths === 'inherit') return pathInPathList(path, site.paths);
 	return pathInPathList(path, region.paths);
-}
+};
 
-const cssForType = (type: Region['type'], hideStyle: StorageLocalV2['regionHideStyle']): string => {
+const cssForType = (type: Region['type']): string => {
 	switch (type) {
 		case 'remove':
-			return 'display: none !important;';
 		case 'hide':
-			switch (hideStyle) {
-				case 'blur':
-					return 'opacity: 0.1 !important; filter: blur(32px) !important; pointer-events: none !important;';
-				case 'hidden':
-				default:
-					return 'opacity: 0 !important; pointer-events: none !important;';
-			}
+			return 'display: none !important;';
 		case 'dull':
-			return 'filter: grayscale(100%) !important';
-		default:
+			return 'filter: grayscale(100%) !important;';
+		case 'none':
 			return '';
 	}
-}
+};
+
+const isDynamicRegion = (region: Region) => region.textPatterns != null || region.groupSelector != null;
 
 const sanitizeSelector = (selector: string): string => {
-	// TODO - make this more robust and add tests before releasing v3.1
 	return selector.replaceAll('{', '').replaceAll('}', '').replaceAll(',', '').replaceAll('@', '');
-}
+};
 
 const enableSite = async (siteId: SiteId) => {
 	const siteList = await loadSitelist();
-	const site = siteList.sites.find(site => site.id === siteId);
-	if (site == null) {
-		return false;
-	}
+	if (!siteList.sites.some(site => site.id === siteId)) return false;
 
-	const origins = originsForSite(site);
+	await saveSiteEnabled(siteId, true);
+	await syncRegisteredContentScript();
+	return true;
+};
 
-	await Promise.allSettled([
-		saveSiteEnabled(site.id, true),
-
-		browser.scripting.registerContentScripts([{
-			id: site.id,
-			js: ['/entrypoints/intercept/intercept.js'],
-			runAt: "document_start",
-			matches: origins,
-			allFrames: false,
-			// world: "MAIN"
-		}]),
-	]);
-}
-
-const requestQuote = async () => {
-	const quoteLists = await loadQuoteLists();
-
-	const activeQuotes: { quoteListId: QuoteListId, quote: Quote }[] = quoteLists
-		.filter(list => !list.disabled)
-		.map(list => {
-			const listQuotes = list.quotes === 'builtin' ? BuiltinQuotes : list.quotes;
-			return listQuotes
-				.filter(q => !list.disabledQuoteIds.includes(q.id.toString()))
-				.map(q => ({ quoteListId: list.id, quote: q }))
-		}).flat();
-
-	const idx = Math.floor(Math.random() * activeQuotes.length);
-	const quote = activeQuotes[idx]!;
-	const response: RequestQuoteResponse = { quoteListId: quote.quoteListId, ...quote.quote };
-	return response;
-}
+const disableSite = async (siteId: SiteId) => {
+	await saveSiteEnabled(siteId, false);
+	await syncRegisteredContentScript();
+};
 
 const setSiteTheme = async (siteId: SiteId, theme: Theme | null) => {
 	await saveThemeForSite(siteId, theme ?? undefined);
-	notifyTabsOptionsUpdated();
-}
+	await notifyTabsOptionsUpdated();
+};
+
+let counterQueue = Promise.resolve(0);
+const countBlock = () => {
+	counterQueue = counterQueue.then(recordDailyBlock);
+	return counterQueue;
+};
 
 const handleMessage = async (msg: ToServiceWorkerMessage, sender: MessageSender) => {
 	if (msg.type === 'requestSiteDetails') {
-		// TODO: Cache these?
-		const [siteList, snoozeUntil, hideQuotes] = await Promise.all([
+		const [siteList, snoozeUntil, enabledSiteIds] = await Promise.all([
 			loadSitelist(),
 			loadSnoozeUntil(),
-			loadHideQuotes(),
+			loadEnabledSites(),
 		]);
 
-		const isSnoozing = snoozeUntil != null && snoozeUntil > Date.now();
-
+		const enabled = new Set(enabledSiteIds);
 		const url = new URL(sender.url);
-		const site = siteList.sites.find(site => site.hosts.includes(url.host));
+		const sites = siteList.sites.filter(site => enabled.has(site.id) && site.hosts.includes(url.host));
+		if (sites.length === 0) return;
 
-		if (site != null) {
-			const [siteOptions, regionHideStyle, widgetStyle] = await Promise.all([
-				loadRegionsForSite(site.id),
-				loadRegionHideStyle(),
-				loadWidgetStyle(),
-			]);
-
-			let regions = site.regions
-				.map((region): DesiredRegionState => {
-					if (isSnoozing || !isEnabledPath(site, region, msg.path)) {
-						return { config: region, css: null, enabled: false };
-					}
-
-					const enabled = siteOptions.regionEnabledOverride[region.id] ?? region.default ?? true;
-
-					const selector = region.selectors.map(sanitizeSelector).join(',');
-					return { config: region, css: `${selector} { ${cssForType(region.type, regionHideStyle)} }`, enabled } ;
-				});
-
-			const theme = siteOptions.theme ?? 'light';
-
-			sendMessage(sender.tab.id, {
-				type: 'nfe#siteDetails',
-				regions,
-				token: msg.token,
-				snoozeUntil: snoozeUntil ?? null,
-				siteId: site.id,
-				widgetStyle,
-				hideQuotes,
-				theme: {
-					css: theme === 'light' ? themeLight : themeDark,
-					id: theme,
+		const siteOptions = await Promise.all(sites.map(site => loadRegionsForSite(site.id)));
+		const isSnoozing = snoozeUntil != null && snoozeUntil > Date.now();
+		const regionsBySite = sites.map((site, siteIndex) => {
+			const options = siteOptions[siteIndex]!;
+			return site.regions.map((region): DesiredRegionState => {
+				const style = cssForType(region.type);
+				if (isSnoozing || !isEnabledPath(site, region, msg.path)) {
+					return { config: region, css: null, style, enabled: false };
 				}
-			})
-		}
-	}
 
-	if (msg.type === 'requestQuote') {
-		return requestQuote();
+				const isEnabled = options.regionEnabledOverride[region.id] ?? region.default ?? true;
+				const selector = region.selectors.map(sanitizeSelector).join(',');
+				const css = [
+					!isDynamicRegion(region) && style !== '' ? `${selector} { ${style} }` : '',
+					region.extraCss ?? '',
+				].filter(Boolean).join('\n') || null;
+				return { config: region, css, style, enabled: isEnabled };
+			});
+		});
+
+		const panelSiteIndex = regionsBySite.findIndex(regions => regions.some(region => region.enabled && region.config.inject != null));
+		const primarySiteIndex = panelSiteIndex >= 0 ? panelSiteIndex : 0;
+		const primarySite = sites[primarySiteIndex]!;
+		const theme = siteOptions[primarySiteIndex]!.theme ?? 'light';
+		const firstLoadRedirect = !isSnoozing
+			&& primarySite.firstLoadRedirect != null
+			&& pathInPathList(msg.path, primarySite.firstLoadRedirect.from)
+			? {
+				to: primarySite.firstLoadRedirect.to,
+				sessionKey: primarySite.firstLoadRedirect.sessionKey,
+			}
+			: null;
+		await sendMessage(sender.tab.id, {
+			type: 'nfe#siteDetails',
+			regions: regionsBySite.flat(),
+			token: msg.token,
+			snoozeUntil: snoozeUntil ?? null,
+			firstLoadRedirect,
+			siteId: primarySite.id,
+			theme: {
+				css: theme === 'light' ? themeLight : themeDark,
+				id: theme,
+			},
+		});
+		return;
 	}
 
 	if (msg.type === 'enableSite') {
 		const result = await enableSite(msg.siteId);
-		notifyTabsOptionsUpdated();
+		await notifyTabsOptionsUpdated();
 		return result;
 	}
 
-	if (msg.type === 'openOptionsPage') {
-		browser.runtime.openOptionsPage();
+	if (msg.type === 'disableSite') {
+		await disableSite(msg.siteId);
+		await notifyTabsOptionsUpdated();
+		return;
 	}
 
-	if (msg.type === 'setQuoteEnabled') {
-		return await saveQuoteEnabled(msg.quoteListId, msg.id, msg.enabled);
+	if (msg.type === 'openOptionsPage') {
+		return browser.runtime.openOptionsPage();
+	}
+
+	if (msg.type === 'closeCurrentTab') {
+		return browser.tabs.remove(sender.tab.id);
+	}
+
+	if (msg.type === 'recordBlock') {
+		return countBlock();
 	}
 
 	if (msg.type === 'notifyOptionsUpdated') {
-		notifyTabsOptionsUpdated();
-	}
-
-	if (msg.type === 'disableSite') {
-		await browser.scripting.unregisterContentScripts({ ids: [msg.siteId]});
-
-		const siteList = await loadSitelist();
-		const site = siteList.sites.find(site => site.id === msg.siteId);
-		if (site == null) return;
-
-		await saveSiteEnabled(site.id, false);
-
-		notifyTabsOptionsUpdated();
+		return notifyTabsOptionsUpdated();
 	}
 
 	if (msg.type === 'snooze') {
-		await saveSnoozeUntil(msg.until)
-
-		notifyTabsOptionsUpdated();
+		await saveSnoozeUntil(msg.until);
+		return notifyTabsOptionsUpdated();
 	}
 
 	if (msg.type === 'readSnooze') {
@@ -240,7 +251,7 @@ const handleMessage = async (msg: ToServiceWorkerMessage, sender: MessageSender)
 	if (msg.type === 'setSiteTheme') {
 		return setSiteTheme(msg.siteId, msg.theme);
 	}
-}
+};
 
 browser.runtime.onMessage.addListener((msg: ToServiceWorkerMessage, sender, sendResponse) => {
 	handleMessage(msg, sender).then(sendResponse);

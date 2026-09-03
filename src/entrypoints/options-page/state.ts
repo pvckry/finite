@@ -1,50 +1,20 @@
-import { createSignal, createEffect, type Accessor, type Setter, createContext, useContext, createResource, type ResourceReturn, createMemo } from "solid-js";
-import type { QuoteList, QuoteListId } from "../../storage/schema";
+import { createContext, useContext, createResource, createMemo } from "solid-js";
 import { expect, originsForSite } from "../../lib/util";
 import type { SiteId, SiteList } from "../../types/sitelist";
-import { loadEnabledSites, loadQuoteLists, loadSnoozeMode } from "../../storage/storage";
-import type { Quote } from "../../quote";
+import { loadEnabledSites, loadSnoozeMode } from "../../storage/storage";
 import { getBrowser, type Permissions } from "../../lib/webextension";
-import { createStore, reconcile } from "solid-js/store";
-import { resourceObj, resourceObjReconciled, signalObj, type SignalObj } from "/lib/solid-util";
+import { resourceObj, signalObj } from "/lib/solid-util";
 import { StorageState } from "./state/storage";
-
-export type EditingState = {
-	type: 'existingQuote'
-	existingQuoteId: string
-} | {
-	type: 'newQuote'
-} | {
-	type: 'quoteListTitle',
-	editValue: SignalObj<string>,
-	quoteListId: QuoteListId,
-};
-
-export type UndoState = {
-	type: 'deleteQuote',
-	quoteListId: QuoteListId,
-	quote: Quote,
-} | {
-	type: 'deleteQuoteList',
-	quoteList: QuoteList,
-};
 
 type SiteState = {
 	enabled: boolean,
-	scriptRegistered: boolean,
 	permissionsEnabled: boolean,
 };
-
-export type PageId = 'sites' | 'snooze' | 'quotes' | 'style' | 'about' | 'debug';
 
 const browser = getBrowser();
 
 export class OptionsPageState {
 	selectedSiteId = signalObj<SiteId | null>(null);
-	selectedQuoteListId = signalObj<QuoteListId | null>(null);
-	editing = signalObj<EditingState | null>(null);
-	page = signalObj<PageId>('sites');
-	undo = signalObj<UndoState | null>(null);
 	clock = signalObj<number>(Date.now());
 
 	storage = new StorageState();
@@ -53,17 +23,11 @@ export class OptionsPageState {
 	snoozeMode = resourceObj(createResource(loadSnoozeMode));
 	enabledSites = resourceObj(createResource(loadEnabledSites));
 	permissions = resourceObj(createResource(() => browser.permissions.getAll()));
-	enabledScripts = resourceObj(createResource(async () => {
-		const scripts = await browser.scripting.getRegisteredContentScripts();
-		return scripts.map(script => script.id) as SiteId[];
-	}));
 
 	siteList = resourceObj(createResource<SiteList | undefined>(async () => {
 			const siteListUrl = browser.runtime.getURL('sitelist.json');
 			return await fetch(siteListUrl).then(siteList => siteList.json());
 	}));
-
-	quoteLists = resourceObjReconciled(loadQuoteLists);
 
 	constructor() {
 		// Clock is only used for animating and updating displayed times
@@ -72,29 +36,6 @@ export class OptionsPageState {
 			requestAnimationFrame(updateClock);
 		};
 		requestAnimationFrame(updateClock);
-	}
-
-	selectedQuoteList = createMemo(() => {
-		const qlId = this.selectedQuoteListId.get();
-		if (qlId == null) return null;
-
-		const lists = this.quoteLists.get()
-		if (lists == null) return null;
-
-		return lists.find(ql => ql.id === qlId);
-	});
-
-	withEditingType<T extends NonNullable<EditingState>['type']>(type: T) {
-		const editingState = this.editing.get();
-		if (editingState == null) return null;
-		if (editingState.type !== type) return null;
-		return editingState as Extract<NonNullable<EditingState>, { type: T }>;
-	}
-
-	async newQuoteList() {
-		const id = await this.storage.newQuoteList();
-		await this.quoteLists.refetch();
-		this.selectedQuoteListId.set(id);
 	}
 
 	async requestPermissions(permissions: Permissions): Promise<boolean> {
@@ -110,7 +51,6 @@ export class OptionsPageState {
 
 	siteState(siteId: SiteId): SiteState {
 		const enabled = this.enabledSites.get()?.includes(siteId) ?? false;
-		const scriptRegistered = this.enabledScripts.get()?.includes(siteId) ?? false;
 		const site = this.siteList.get()?.sites.find(site => site.id === siteId);
 
 		let permissionsEnabled = true;
@@ -126,7 +66,6 @@ export class OptionsPageState {
 
 		return {
 			enabled,
-			scriptRegistered,
 			permissionsEnabled,
 		}
 	}

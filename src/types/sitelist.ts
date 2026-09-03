@@ -18,21 +18,36 @@ export type Site = {
 	hosts: string[],
 	paths: PathList,
 	popular?: boolean,
+	firstLoadRedirect?: {
+		from: PathList,
+		to: string,
+		sessionKey: string,
+	},
 	regions: Region[]
 };
 
 
 export type Inject = {
-	mode: 'firstChild' | 'lastChild' | 'before' | 'after' | 'overlay' | 'overlay-fixed'
+	mode: 'firstChild' | 'lastChild' | 'before' | 'after' | 'overlay' | 'overlay-fixed' | 'fixed-corner'
 	overlayZIndex?: number;
+	selectors?: string[];
 }
 
 export type Region = {
 	id: RegionId,
 	selectors: string[],
 	title: string,
-	type: 'hide' | 'remove' | 'dull',
+	type: 'hide' | 'remove' | 'dull' | 'none',
 	paths: 'inherit' | '*' | PathList,
 	default?: boolean,
 	inject?: Inject,
+	extraCss?: string,
+	removeFromDom?: boolean,
+	textPatterns?: string[],
+	textSelectors?: string[],
+	textMatchMode?: 'candidate' | 'closest-post' | 'following-posts' | 'active-tab-timeline',
+	groupSelector?: string,
+	groupAncestorSelectors?: string[],
+	groupMinimum?: number,
+	behavior?: 'youtube-cinema-mode' | 'twitter-default-following',
 }

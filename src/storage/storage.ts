@@ -1,8 +1,6 @@
-import { generateId } from "../lib/generate-id";
 import { getBrowser } from "../lib/webextension";
-import type { Quote } from "../quote";
 import type { RegionId, SiteId, SiteList } from "../types/sitelist";
-import { type StorageSyncV1, SiteStateTagV1, type StorageLocal, type StorageLocalV2, CURRENT_STORAGE_SCHEMA_VERSION, type SiteConfig, type Theme, defaultQuoteLists, type QuoteListId, type QuoteList, BUILTIN_QUOTE_LIST_ID, type SnoozeMode } from "./schema";
+import { type StorageSyncV1, SiteStateTagV1, type StorageLocal, type StorageLocalV2, CURRENT_STORAGE_SCHEMA_VERSION, type SiteConfig, type Theme, type SnoozeMode } from "./schema";
 
 const ensureMigrated = async (): Promise<void> => {
 	const browser = getBrowser();
@@ -32,28 +30,9 @@ const ensureMigrated = async (): Promise<void> => {
 			.map(([siteId,]) => siteId as SiteId);
 	}
 
-	const quoteLists = ([] as QuoteList[]).concat(defaultQuoteLists());
-
-	if (storageSync.customQuotes.length > 0) {
-		quoteLists.push({
-			id: 'migrated' as QuoteListId,
-			title: 'Custom quotes from previous version',
-			disabledQuoteIds: [],
-			disabled: false,
-			imported: false,
-			quotes: storageSync.customQuotes.map(q => ({
-				id: q.id,
-				text: q.text,
-				author: q.source, // Renamed source to author
-			})),
-		});
-	}
-
 	const migratedData: StorageLocalV2 = {
 		version: 2,
-		hideQuotes: storageSync.showQuotes === false,
 		snoozeMode: 'instant', // Preserve original snooze behaviour for existing users
-		quoteLists,
 		enabledSites,
 	}
 
@@ -82,18 +61,7 @@ const setKey = async <Key extends keyof StorageLocal>(k: Key, val: StorageLocal[
 export const loadSettingsLocked = () => getKey('settingsLocked', false);
 export const saveSettingsLocked = (settingsLocked: boolean) => setKey('settingsLocked', settingsLocked);
 
-export const loadRegionHideStyle = () => getKey('regionHideStyle', 'hidden');
-export const saveRegionHideStyle = (regionHideStyle: StorageLocalV2['regionHideStyle']) => setKey('regionHideStyle', regionHideStyle);
-
-export const loadWidgetStyle = () => getKey('widgetStyle', 'contained');
-export const saveWidgetStyle = (widgetTheme: StorageLocalV2['widgetStyle']) => setKey('widgetStyle', widgetTheme);
-
-export const loadHideQuotes = () => getKey('hideQuotes', false);
-export const saveHideQuotes = (hideQuotes: boolean) => setKey('hideQuotes', hideQuotes);
 export const loadEnabledSites = () => getKey('enabledSites', []);
-
-export const loadHideWidgetToolbar = () => getKey('hideWidgetToolbar', true);
-export const saveHideWidgetToolbar = (hideWidgetToolbar: boolean) => setKey('hideWidgetToolbar', hideWidgetToolbar);
 
 export const saveSiteEnabled = async (siteId: SiteId, enable: boolean): Promise<void> => {
 	const s = await getKey('enabledSites', []);
@@ -109,6 +77,30 @@ export const saveSnoozeUntil = (snoozeUntil: number | undefined) => setKey('snoo
 
 export const loadSnoozeMode = () => getKey('snoozeMode', 'hold');
 export const saveSnoozeMode = (snoozeMode: SnoozeMode) => setKey('snoozeMode', snoozeMode);
+
+const localDateKey = (date = new Date()) => {
+	const year = date.getFullYear();
+	const month = String(date.getMonth() + 1).padStart(2, '0');
+	const day = String(date.getDate()).padStart(2, '0');
+	return `${year}-${month}-${day}`;
+}
+
+export const loadDailyBlockerCount = async () => {
+	const today = localDateKey();
+	const counter = await getKey('dailyBlockerCounter', { date: today, count: 0 });
+	return counter.date === today ? counter.count : 0;
+}
+
+export const recordDailyBlock = async () => {
+	const today = localDateKey();
+	const current = await getKey('dailyBlockerCounter', { date: today, count: 0 });
+	const next = {
+		date: today,
+		count: current.date === today ? current.count + 1 : 1,
+	};
+	await setKey('dailyBlockerCounter', next);
+	return next.count;
+}
 
 export const loadSiteConfig = async (siteId: SiteId): Promise<SiteConfig | undefined> => {
 	const sites = await getKey('siteConfig', {});
@@ -130,118 +122,6 @@ export const saveThemeForSite = async (siteId: SiteId, theme: Theme | undefined)
 }
 
 export const loadRegionsForSite = async (siteId: SiteId): Promise<SiteConfig> => loadSiteConfig(siteId).then(site => site ?? { regionEnabledOverride: {} });
-
-export const loadQuoteLists = async () => getKey('quoteLists', defaultQuoteLists());
-export const loadQuoteList = async (id: QuoteListId) => loadQuoteLists().then(quoteLists => quoteLists.find(ql => ql.id === id));
-
-export const deleteQuoteList = async (id: QuoteListId) => {
-	if (id === BUILTIN_QUOTE_LIST_ID) {
-		throw new Error('Cannot delete builtin quotes list');
-	}
-
-	let quoteLists = await loadQuoteLists();
-	quoteLists = quoteLists.filter(ql => ql.id !== id);
-	await setKey('quoteLists', quoteLists);
-}
-
-export const saveQuoteListTitle = async (id: QuoteListId, title: string) => {
-	await editQuoteList(id, list => {
-		list.title = title;
-	});
-}
-
-export const deleteQuote = async (qlId: QuoteListId, id: string) => {
-	await editQuoteList(qlId, list => {
-		if (list.quotes === 'builtin') {
-			return list;
-		}
-
-		list.quotes = list.quotes.filter(q => q.id !== id);
-		return list;
-	});
-}
-
-export const undoDeleteQuote = async (qlId: QuoteListId, quote: Quote) => {
-	await editQuoteList(qlId, list => {
-		if (list.quotes === 'builtin') {
-			return list;
-		}
-
-		list.quotes.push(quote);
-		return list;
-	});
-}
-
-export const saveQuote = async (qlId: QuoteListId, id: string, text: string, author: string) => {
-	await editQuoteList(qlId, list => {
-		if (list.quotes === 'builtin') {
-			throw new Error('Cannot save to builtin quotes list');
-		}
-
-		const quote = list.quotes.find(q => q.id === id);
-
-		if (quote == null) {
-			list.quotes.push({
-				id,
-				text,
-				author,
-			})
-		} else {
-			quote.text = text;
-			quote.author = author;
-		}
-	});
-}
-
-const editQuoteList = async (quoteListId: QuoteListId, fn: (quoteList: QuoteList) => void) => {
-	const lists = await loadQuoteLists();
-
-	const list = lists.find(ql => ql.id === quoteListId);
-	if (list == null) {
-		throw new Error(`editQuoteList failed: Quote list not found ${quoteListId}`)
-	}
-
-	fn(list);
-
-	await setKey('quoteLists', lists);
-}
-
-export const saveQuoteEnabled = async (quoteListId: QuoteListId, id: string, enabled: boolean) => {
-	await editQuoteList(quoteListId, list => {
-		list.disabledQuoteIds = list.disabledQuoteIds.filter(qid => qid !== id);
-		if (!enabled) {
-			list.disabledQuoteIds.push(id);
-		}
-	});
-}
-
-export const saveQuoteListEnabled = async (quoteListId: QuoteListId, enabled: boolean) => {
-	await editQuoteList(quoteListId, list => list.disabled = !enabled);
-}
-
-export const saveNewQuoteList = async ({ title, quotes, imported, disabledQuoteIds }: { title: string, quotes: Quote[], imported: boolean, disabledQuoteIds: string[] }) => {
-	const lists = await loadQuoteLists();
-
-	const id = generateId() as QuoteListId;
-	lists.push({
-		id,
-		disabled: false,
-		title,
-		quotes,
-		imported,
-		disabledQuoteIds,
-	});
-
-	await setKey('quoteLists', lists);
-
-	return id;
-}
-
-export const undoDeleteQuoteList = async (quoteList: QuoteList) => {
-	const lists = await loadQuoteLists();
-	lists.push(quoteList);
-	await setKey('quoteLists', lists);
-}
 
 export const clearRegionsForSite = async (siteId: SiteId): Promise<void> => {
 	const siteConfig = (await getKey('siteConfig') ?? {});

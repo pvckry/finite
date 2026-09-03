@@ -82,7 +82,7 @@ const InstantSnoozeButton: ParentComponent<{ ms: number, primary?: boolean }> = 
 }
 
 const InstantSnoozeButtons = () => {
-		return <div class="flex gap-2 cross-center card outlined shadow p-4">
+		return <div class="flex gap-2 cross-center card outlined shadow p-4 snooze-strip">
 			<div class="text-secondary">Snooze for</div>
 			<InstantSnoozeButton ms={MINUTE}>1m</InstantSnoozeButton>
 			<InstantSnoozeButton ms={2 * MINUTE}>2m</InstantSnoozeButton>

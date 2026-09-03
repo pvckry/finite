@@ -26,7 +26,6 @@ const Site = ({ site }: { site: Site }) => {
 		});
 
 		await state.enabledSites.refetch();
-		await state.enabledScripts.refetch();
 	};
 
 	const disableSite = async (site: Site) => {
@@ -37,42 +36,40 @@ const Site = ({ site }: { site: Site }) => {
 			siteId: site.id
 		});
 
-		await Promise.allSettled([
-			state.removePermissions({ origins, permissions: [] }),
-			state.enabledSites.refetch(),
-			state.enabledScripts.refetch(),
-		]);
+		await state.enabledSites.refetch();
+
+		const enabledSiteIds = new Set(state.enabledSites.get() ?? []);
+		const originsStillNeeded = new Set(
+			(state.siteList.get()?.sites ?? [])
+				.filter(candidate => enabledSiteIds.has(candidate.id))
+				.flatMap(originsForSite)
+		);
+		const removableOrigins = origins.filter(origin => !originsStillNeeded.has(origin));
+		if (removableOrigins.length > 0) {
+			await state.removePermissions({ origins: removableOrigins, permissions: [] });
+		}
 		state.selectedSiteId.set(null);
 	}
 
 	const id = `site-toggle-${site.id}`;
+	const selectSite = () => state.selectedSiteId.set(state.selectedSiteId.get() === site.id ? null : site.id);
 
 	return <>
-		<li class="hoverable" aria-selected={state.selectedSiteId.get() === site.id}>
-			<label for={id} class={`cursor-pointer px-4 py-2 gap-2 flex cross-center`}>
-				<input id={id} type="checkbox" disabled={state.settingsLockedDown()} class="toggle" onClick={(e) => {
-						e.preventDefault();
-						if (state.siteState(site.id).enabled) {
-							if (state.selectedSiteId.get() === site.id) {
-								disableSite(site);
-							} else {
-								state.selectedSiteId.set(site.id);
-								return false;
-							}
-						} else {
-							state.selectedSiteId.set(site.id);
-							enableSite(site);
-						}
-					} }
-					checked={state.siteState(site.id).enabled} />
+		<li class="site-row" aria-selected={state.selectedSiteId.get() === site.id}>
+			<input id={id} aria-label={`Enable ${site.title}`} type="checkbox" disabled={state.settingsLockedDown()} class="toggle" onChange={event => {
+				if (event.currentTarget.checked) enableSite(site);
+				else disableSite(site);
+			}} checked={state.siteState(site.id).enabled} />
+			<button type="button" class="site-select" onClick={selectSite} aria-expanded={state.selectedSiteId.get() === site.id}>
 				<Show when={state.sitesWithInvalidPermissions().includes(site.id)}>
 					<span class="">⚠️</span>
 				</Show>
-				<div class="flex flex-col">
-					<div>{site.title}</div>
+				<div class="flex flex-col flex-1 site-copy">
+					<div class="font-bold">{site.title}</div>
 					<div class="font-xs text-figure-500">{site.hosts.join(', ')}</div>
 				</div>
-			</label>
+				<span class="site-chevron" aria-hidden="true">›</span>
+			</button>
 		</li>
 	</>
 }
@@ -87,14 +84,14 @@ export const SiteList = () => {
 	});
 
 	return  <div class="overlay-container">
-		<div class="flex blur-disabled" aria-disabled={state.settingsLockedDown()}>
-			<ul class={`flex viewport-scroller flex-col py-2 ${selectedSite() == null ? 'flex-1' : 'br-1 mw-xs'}`}>
+		<div class="flex site-browser blur-disabled" aria-disabled={state.settingsLockedDown()}>
+			<ul class={`flex viewport-scroller flex-col py-2 site-list ${selectedSite() == null ? 'flex-1' : 'br-1 mw-xs'}`}>
 				<For each={state.siteList.get()?.sites}>
 					{site => <Site site={site} />}
 				</For>
 			</ul>
 			<Show when={selectedSite() != null}>
-				<div class="flex-1">
+				<div class="flex-1 site-detail">
 					<SiteConfigPanel site={selectedSite} />
 				</div>
 			</Show>

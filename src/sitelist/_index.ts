@@ -10,11 +10,6 @@ const sitelist: SiteList = {
 		(await import('./twitter')).default,
 		(await import('./linkedin')).default,
 		(await import('./threads')).default,
-		(await import('./bluesky')).default,
-		(await import('./substack')).default,
-		(await import('./github')).default,
-		(await import('./hackernews')).default,
-		(await import('./abc-news-au')).default,
 	]
 }
 

@@ -1,23 +1,34 @@
 import packageJson from '../package.json';
 
 export default {
-	"name": "News Feed Eradicator",
+	"name": "Finite",
 	"version": packageJson.version,
 	"description": packageJson.description,
 	"manifest_version": 3,
 	"permissions": ["storage", "scripting"],
-	"optional_host_permissions": ["*://*/*"],
+	"optional_host_permissions": [
+		"*://www.facebook.com/*",
+		"*://web.facebook.com/*",
+		"*://m.facebook.com/*",
+		"*://www.instagram.com/*",
+		"*://www.youtube.com/*",
+		"*://youtube.com/*",
+		"*://www.reddit.com/*",
+		"*://old.reddit.com/*",
+		"*://x.com/*",
+		"*://www.linkedin.com/*",
+		"*://www.threads.com/*"
+	],
 	"action": {
 		"default_icon": {
 			"16": "assets/icons/logo-contrast-16.png",
 			"32": "assets/icons/logo-contrast-32.png",
 			"64": "assets/icons/logo-contrast-64.png",
 		},
-		"default_title": "News Feed Eradicator"
+		"default_title": "Finite"
 	},
 	"background": {
 		"service_worker": "entrypoints/service-worker/service-worker.js",
-		"scripts": ["entrypoints/service-worker/service-worker.js"],
 		"type": "module"
 	},
 	"options_ui": {
@@ -37,13 +48,5 @@ export default {
 			"resources": ["sitelist.json", "entrypoints/intercept/intercept.js"],
 			"extension_ids": [],
 		}
-	],
-	"browser_specific_settings": {
-		"gecko": {
-			"id": "@news-feed-eradicator"
-		},
-		"gecko_android": {
-			"strict_min_version": "113.0"
-		}
-	}
+	]
 }

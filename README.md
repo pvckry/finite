@@ -1,48 +1,44 @@
-# News Feed Eradicator
+# Finite
 
-A browser extension that replaces your social media feeds with a quote.
+A Chrome extension that makes infinite feeds finite. It removes distracting algorithmic content while keeping the useful parts of the sites you visit.
 
-[Install Chrome Extension](https://chrome.google.com/webstore/detail/news-feed-eradicator-for/fjcldmjmjhkklehbacihaiopjklihlgg?hl=en)
+Source: [github.com/pvckry/finite](https://github.com/pvckry/finite)
 
-[Install Firefox Add-on](https://addons.mozilla.org/en-US/firefox/addon/news-feed-eradicator/)
+Finite is based on News Feed Eradicator v3 and is intended to be loaded as an unpacked Chrome extension.
 
----------
+## Included blockers
 
-## Contributing to News Feed Eradicator
+- Facebook
+- Instagram, with separate toggles for Stories, two kinds of suggested home content, suggested accounts, Explore, the Reels feed, and Reels navigation
+- YouTube, with cinema mode on by default and separate toggles for the main feed, recommendations, comments, and Shorts
+- Reddit
+- Twitter/X
+- LinkedIn
+- Threads
 
-### Reporting issues
+Instagram Stories remain visible by default, while suggested posts are detected independently of followed-account posts. Media inside blocked Instagram suggestions, Instagram Reels, and YouTube Shorts is paused and muted.
 
-For *bugs only*, please use the [issue tracker](https://github.com/jordwest/news-feed-eradicator/issues).
+Twitter/X includes independent controls for the For you and Following timelines, defaults to Following, and can remove promoted posts, the right sidebar, suggestion modules, engagement counts, Explore navigation, Grok, and Premium promotions.
 
-### Feature requests, ideas, etc
+## Privacy
 
-For feature requests, ideas, and new site suggestions, please use the [Ideas discussion board](https://github.com/jordwest/news-feed-eradicator/discussions/categories/ideas). Check first if your idea already exists and give it an upvote if so.
+Finite does not include analytics or telemetry and does not send browsing activity to a server. Preferences, snooze state, and the current daily blocker count are stored locally by Chrome.
 
-### Pull requests
+## Build and install
 
-In general, pull requests are only accepted for bug fixes or documentation improvements. In terms of features I mostly consider the project "done" and would like to keep it minimal and simple to reduce the maintenance burden. If you have ideas, please post in the [Ideas discussion board](https://github.com/jordwest/news-feed-eradicator/discussions/categories/ideas). You are of course welcome to fork the project if you'd like to make a more complex version.
+Requirements:
 
-----------
+- [Bun](https://bun.com/)
+- make
 
-## Development
+Build once:
 
-This plugin is built as a WebExtension - a standard for browser plugins currently supported in both Chrome and Firefox.
+    make build
 
-### Dependencies
+Then open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select the generated `build` directory.
 
- - [bun](https://bun.com/)
- - make
-
-To build for either browser, clone the repository and then run:
+For development with automatic rebuilds:
 
     make dev
 
-If everything is successful, check the `build` folder for the extension contents. You can load the `build` directory into either Chrome or Firefox as an _unpacked_ or _temporary_ extension. See the instructions for [Chrome](https://developer.chrome.com/docs/extensions/get-started/tutorial/hello-world#load-unpacked) or [Firefox](https://developer.mozilla.org/en-US/Add-ons/WebExtensions/Temporary_Installation_in_Firefox).
-
-Running `make dev` will watch for changes and recompile, however each time you make changes you'll need to tell the browser to reload the temporary extension.
-
-To build a distributable `.zip` for production, just run:
-
-    make
-
-The extension package can be found in the `dist` folder.
+The original project is Copyright Jordan West and contributors and remains licensed under AGPL-3.0-only.
