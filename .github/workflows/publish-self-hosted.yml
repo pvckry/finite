@@ -28,7 +28,7 @@ jobs:
 
     steps:
       - name: Check out the release source
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Add the Zenithar toolchain to PATH
         run: echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
@@ -89,4 +89,3 @@ jobs:
           local_sha=$(sha256sum dist/self-hosted/finite.crx | cut -d' ' -f1)
           public_sha=$(curl -fsS https://api.vckry.com/finite-updates/finite.crx | sha256sum | cut -d' ' -f1)
           test "$local_sha" = "$public_sha"
-
