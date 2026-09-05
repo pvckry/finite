@@ -5,6 +5,15 @@
 - Remove the obsolete Chrome-only daily blocker counter now that category-aware usage metrics are available.
 - Clarify the optional private browser-sync boundary in the privacy documentation.
 
+## [3.2.2] - 2026-09-05
+
+- Publish signed Finite releases automatically from pushes to `main` using a dedicated runner on Zenithar.
+
+## [3.2.1] - 2026-09-05
+
+- Add a signed, self-hosted Helium update channel served from Zenithar.
+- Add repeatable packaging and deployment commands for future releases.
+
 ## [3.0.5] - 2026-07-16
 
 - Fix security error from sitelist.json fetch in content script (thanks @argothiel)

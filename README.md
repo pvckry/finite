@@ -4,7 +4,7 @@ A Chrome extension that makes infinite feeds finite. It removes distracting algo
 
 Source: [github.com/pvckry/finite](https://github.com/pvckry/finite)
 
-Finite is based on News Feed Eradicator v3 and is intended to be loaded as an unpacked Chrome extension.
+Finite is based on News Feed Eradicator v3. It can be loaded unpacked for development or installed from its private self-hosted release channel for automatic updates in Helium.
 
 ## Included blockers
 
@@ -42,5 +42,31 @@ Then open `chrome://extensions`, enable Developer mode, choose **Load unpacked**
 For development with automatic rebuilds:
 
     make dev
+
+## Self-hosted Helium releases
+
+Finite has a stable extension identity and a private update channel hosted on Zenithar at `https://api.vckry.com/finite-updates/`. The first packaged install creates the automatic-update relationship; later releases retain the same identity and settings when they are signed with the same private key.
+
+Install it once in each Helium profile on macOS or Windows:
+
+1. Open `chrome://flags/#extension-mime-request-handling`.
+2. Set **Extension MIME Request Handling** to **Always prompt for install**, then relaunch Helium.
+3. Open `https://api.vckry.com/finite-updates/finite.crx` and approve the installation.
+
+Helium then checks the embedded update URL and installs later signed releases automatically.
+
+The signing key is kept outside this repository at `~/.config/finite/finite-extension.pem` on the Mac and `/home/pvckry/finite-secrets/finite-extension.pem` on Zenithar. Both copies are readable only by `pvckry`. Keep a separate secure backup: losing every copy prevents future packages from updating existing installations.
+
+To build a signed CRX and its update manifest:
+
+    make package-self-hosted
+
+To build and publish the release to Zenithar:
+
+    make deploy-self-hosted
+
+The deployment script uploads only the signed CRX and public update metadata. It never uploads the private signing key.
+
+Pushes to `main` that change the extension automatically run the self-hosted GitHub Actions runner on Zenithar. The workflow tests, signs, publishes, and verifies the release. When `package.json` does not already contain a newer version, it increments the patch version and records that bump on `main` before publishing.
 
 The original project is Copyright Jordan West and contributors and remains licensed under AGPL-3.0-only.

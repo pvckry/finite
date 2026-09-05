@@ -5,6 +5,8 @@ export default {
 	"version": packageJson.version,
 	"description": packageJson.description,
 	"manifest_version": 3,
+	"key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1EjVwe2HuREe6NQwouRU9Rs+poIFb6Hg9gETVdD/TjiMqL/GjvSa4oTD5DU+aZhvxowPsTEXaLfaIQ/knC7lCaHQT0Thc7pDoIgbIVNk6tR5uJzY7FRppAALqyTUOfqhOTdGd4Cs2i4nnpSO9YoM28Y55AXsqQ4NbFooVx1EDkEDrREtt4syPG4W4bn6S9jprfh5vhyI4Nco9gmmZD8AyMnvPI9pJaUqSKFr69TaL76REl9idgD/XFGH+Ck4vf+2oVxeggKeOaJsuGG7ttrrVyr3aWsNLOUYTQKCa+u+IEcIZPi4CQ8ych6ub9B7rms2OI4VG0ZIrhZatDkeRt2/lwIDAQAB",
+	"update_url": "https://api.vckry.com/finite-updates/updates.xml",
 	"permissions": ["storage", "scripting"],
 	"host_permissions": ["https://api.vckry.com/*"],
 	"optional_host_permissions": [

@@ -5,7 +5,7 @@
   "description": "Make infinite feeds finite and browse with intention",
   "author": "pvckry",
   "license": "AGPL-3.0-only",
-  "version": "3.2.0",
+  "version": "3.2.2",
   "homepage": "https://github.com/pvckry/finite",
   "repository": {
     "type": "git",
