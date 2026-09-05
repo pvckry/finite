@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 
 MAX_COMPONENT = 65535
@@ -52,7 +52,11 @@ def main() -> None:
 	if args.hosted_version:
 		hosted_version = args.hosted_version
 	else:
-		with urlopen(args.release_url, timeout=15) as response:
+		request = Request(
+			args.release_url,
+			headers={"User-Agent": "Finite release publisher/1.0"},
+		)
+		with urlopen(request, timeout=15) as response:
 			hosted_version = json.load(response)["version"]
 	parse_version(hosted_version)
 
@@ -67,4 +71,3 @@ def main() -> None:
 
 if __name__ == "__main__":
 	main()
-
